@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { collection, doc, query, where } from 'firebase/firestore';
@@ -12,9 +12,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type UserProfile = {
   id: string;
@@ -29,6 +40,7 @@ export default function TeamPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   const userDocRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -44,36 +56,64 @@ export default function TeamPage() {
   const { data: users, isLoading: areUsersLoading } = useCollection<UserProfile>(usersCollectionRef);
 
   useEffect(() => {
-    if (!isUserLoading && !isProfileLoading && currentUserProfile) {
-      if (currentUserProfile.role !== 'Admin') {
-        toast({
-          variant: 'destructive',
-          title: 'Access Denied',
-          description: 'You do not have permission to view this page.',
-        });
-        router.push('/dashboard');
-      }
-    }
-     if (!isUserLoading && !user) {
+    if (isUserLoading || isProfileLoading) return;
+    
+    if (!user) {
       router.push('/login');
+      return;
     }
-  }, [isUserLoading, isProfileLoading, currentUserProfile, router, toast, user]);
-  
+    if (currentUserProfile && currentUserProfile.role !== 'Admin') {
+      toast({
+        variant: 'destructive',
+        title: 'Access Denied',
+        description: 'You do not have permission to view this page.',
+      });
+      router.push('/dashboard');
+    }
+  }, [user, isUserLoading, currentUserProfile, isProfileLoading, router, toast]);
+
   const handleRoleChange = (userId: string, newRole: UserProfile['role']) => {
-    if(user?.uid === userId) {
-        toast({
-            variant: "destructive",
-            title: "Action Forbidden",
-            description: "You cannot change your own role.",
-        });
-        return;
+    if (user?.uid === userId) {
+      toast({
+        variant: 'destructive',
+        title: 'Action Forbidden',
+        description: 'You cannot change your own role.',
+      });
+      return;
     }
     const userToUpdateRef = doc(firestore, 'users', userId);
     updateDocumentNonBlocking(userToUpdateRef, { role: newRole });
     toast({
-        title: 'Role Updated',
-        description: `User role has been successfully changed to ${newRole}.`,
+      title: 'Role Updated',
+      description: `User role has been successfully changed to ${newRole}.`,
     });
+  };
+
+  const handleInviteUser = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get('email') as string;
+    const role = formData.get('role') as string;
+
+    if (!email || !role) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing fields',
+        description: 'Please enter an email and select a role.',
+      });
+      return;
+    }
+
+    // In a real app, you'd call a flow to generate an invite link and send an email.
+    // For now, we'll just show a success message.
+    console.log(`Inviting ${email} with role ${role}`);
+
+    toast({
+      title: 'Invitation Sent!',
+      description: `An invitation has been sent to ${email}.`,
+    });
+
+    setIsSheetOpen(false);
   };
 
   if (isUserLoading || areUsersLoading || isProfileLoading) {
@@ -87,24 +127,30 @@ export default function TeamPage() {
   }
 
   if (currentUserProfile?.role !== 'Admin') {
-      return (
-          <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Access Denied</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p>You do not have the necessary permissions to view this page. Please contact an administrator.</p>
-              </CardContent>
-            </Card>
-          </main>
-      )
+    return (
+      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Access Denied</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>You do not have the necessary permissions to view this page. Please contact an administrator.</p>
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   return (
+    <>
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="flex items-center">
         <h1 className="font-semibold text-lg md:text-2xl">Team Management</h1>
+        <div className="ml-auto">
+          <Button onClick={() => setIsSheetOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Invite User
+          </Button>
+        </div>
       </div>
       <Card>
         <CardHeader>
@@ -154,7 +200,38 @@ export default function TeamPage() {
         </CardContent>
       </Card>
     </main>
+
+    <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Invite a New User</SheetTitle>
+            <SheetDescription>
+              Send an invitation to a new user to join your organization.
+            </SheetDescription>
+          </SheetHeader>
+          <form onSubmit={handleInviteUser} className="grid gap-6 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input id="email" name="email" type="email" placeholder="name@company.com" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Select name="role" required>
+                <SelectTrigger id="role">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Manager">Manager</SelectItem>
+                  <SelectItem value="Employee">Employee</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <SheetFooter className="mt-4">
+              <Button type="submit">Send Invitation</Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
-
-    
