@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -77,7 +78,7 @@ export default function CreateInvoicePage() {
 
     const handleItemChange = (id: number, field: keyof Omit<LineItem, 'id'>, value: string | number) => {
         setLineItems(lineItems.map(item =>
-            item.id === id ? { ...item, [field]: typeof value === 'string' ? value : Number(value) } : item
+            item.id === id ? { ...item, [field]: typeof value === 'number' ? value : Number(value) || 0 } : item
         ));
     };
 
