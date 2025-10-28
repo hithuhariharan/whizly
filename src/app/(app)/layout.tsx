@@ -43,6 +43,8 @@ import {
   SidebarInset,
   SidebarFooter,
 } from '@/components/ui/sidebar';
+import { useAuth, useUser } from '@/firebase';
+import { signOut } from 'firebase/auth';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -69,6 +71,26 @@ const navItems = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
+
+  React.useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isUserLoading, router]);
+
+  const handleLogout = () => {
+    signOut(auth);
+  };
+
+  if (isUserLoading || !user) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -92,7 +114,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <SidebarMenu>
                     {item.items.map((subItem) => (
                       <SidebarMenuItem key={subItem.href}>
-                        <Link href={subItem.href}>
+                        <Link href={subItem.href} passHref>
                           <SidebarMenuButton
                             isActive={pathname === subItem.href}
                             tooltip={subItem.label}
@@ -107,7 +129,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </SidebarMenuItem>
               ) : (
                 <SidebarMenuItem key={item.href}>
-                  <Link href={item.href}>
+                  <Link href={item.href} passHref>
                     <SidebarMenuButton
                       isActive={pathname === item.href}
                       tooltip={item.label}
@@ -126,12 +148,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-12 w-full justify-start gap-2 px-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src="https://picsum.photos/seed/user/100/100" alt="User" data-ai-hint="person avatar"/>
-                  <AvatarFallback>U</AvatarFallback>
+                  <AvatarImage src={user.photoURL || "https://picsum.photos/seed/user/100/100"} alt="User" data-ai-hint="person avatar"/>
+                  <AvatarFallback>{user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="text-left">
-                  <p className="text-sm font-medium">User</p>
-                  <p className="text-xs text-muted-foreground">user@whizly.ai</p>
+                  <p className="text-sm font-medium">{user.displayName || 'User'}</p>
+                  <p className="text-xs text-muted-foreground">{user.email}</p>
                 </div>
               </Button>
             </DropdownMenuTrigger>
@@ -143,7 +165,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <span>Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push('/login')}>
+              <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>

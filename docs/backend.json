@@ -55,7 +55,8 @@
         },
         "role": {
           "type": "string",
-          "description": "The user's role within the application (e.g., admin, manager, employee)."
+          "description": "The user's role within the application.",
+          "enum": ["Admin", "Manager", "Employee"]
         }
       },
       "required": [
@@ -290,7 +291,7 @@
   "auth": {
     "providers": [
       "password",
-      "anonymous"
+      "google.com"
     ]
   },
   "firestore": {
