@@ -20,6 +20,7 @@ import { trainChatbotAgent } from '@/ai/flows/train-chatbot-agent';
 import { summarizeConversation } from '@/ai/flows/summarize-conversation';
 import type { Conversation } from '@/lib/types';
 import { Separator } from '@/components/ui/separator';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const mockConversations: Conversation[] = [
   {
