@@ -15,6 +15,9 @@ import { z } from 'zod';
 import { useEffect } from 'react';
 import { updateProfile } from 'firebase/auth';
 import { useAuth } from '@/firebase';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const profileFormSchema = z.object({
   name: z.string().min(2, {
@@ -23,23 +26,34 @@ const profileFormSchema = z.object({
   email: z.string().email(),
 });
 
+const companyProfileSchema = z.object({
+  companyName: z.string().optional(),
+  legalEntityType: z.string().optional(),
+  gstin: z.string().optional(),
+  pan: z.string().optional(),
+  cin: z.string().optional(),
+  billingAddress: z.string().optional(),
+  branchAddress: z.string().optional(),
+  placeOfSupply: z.string().optional(),
+  bankName: z.string().optional(),
+  accountNumber: z.string().optional(),
+  ifscCode: z.string().optional(),
+  upiId: z.string().optional(),
+  defaultCurrency: z.enum(['INR', 'USD']).optional(),
+  defaultTaxRegime: z.enum(['Regular', 'Composition']).optional(),
+});
+
+
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
+type CompanyProfileFormValues = z.infer<typeof companyProfileSchema>;
 
 
 export default function SettingsPage() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
-  const firestore = useFirestore();
   const { toast } = useToast();
   
-  const userDocRef = useMemoFirebase(() => {
-    if (!user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
-
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<{ name: string; email: string }>(userDocRef);
-
-  const form = useForm<ProfileFormValues>({
+  const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
         name: user?.displayName || '',
@@ -47,21 +61,27 @@ export default function SettingsPage() {
     }
   });
 
+  const companyForm = useForm<CompanyProfileFormValues>({
+    resolver: zodResolver(companyProfileSchema),
+  });
+
   useEffect(() => {
-    if(userProfile) {
-        form.reset({
-            name: userProfile.name || user?.displayName || '',
-            email: userProfile.email || user?.email || '',
+    if(user) {
+        profileForm.reset({
+            name: user.displayName || '',
+            email: user.email || '',
         })
     }
-  }, [userProfile, user, form]);
+  }, [user, profileForm]);
 
 
-  async function onSubmit(data: ProfileFormValues) {
-    if (!userDocRef || !auth.currentUser) return;
+  async function onProfileSubmit(data: ProfileFormValues) {
+    if (!auth.currentUser) return;
     
     try {
         await updateProfile(auth.currentUser, { displayName: data.name });
+        // Assuming user profile data is stored in a 'users' collection
+        const userDocRef = doc(useFirestore(), 'users', auth.currentUser.uid);
         setDocumentNonBlocking(userDocRef, { name: data.name }, { merge: true });
         toast({
           title: "Profile Updated",
@@ -76,7 +96,15 @@ export default function SettingsPage() {
     }
   }
 
-  if (isUserLoading || isProfileLoading) {
+  function onCompanyProfileSubmit(data: CompanyProfileFormValues) {
+    toast({
+        title: "Company Profile Saved",
+        description: "Your company details have been updated.",
+    })
+    console.log(data);
+  }
+
+  if (isUserLoading) {
       return (
           <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
               <h1 className="font-semibold text-lg md:text-2xl">Loading Settings...</h1>
@@ -89,57 +117,114 @@ export default function SettingsPage() {
       <div className="grid w-full max-w-6xl gap-2">
         <h1 className="text-3xl font-semibold">Settings</h1>
       </div>
-       <div className="grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
-        <nav className="grid gap-4 text-sm text-muted-foreground">
-          <a href="#" className="font-semibold text-primary">
-            Profile
-          </a>
-        </nav>
+       <Tabs defaultValue="profile" className="grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
+        <TabsList className="grid-cols-1 text-sm text-muted-foreground h-auto bg-transparent p-0">
+          <TabsTrigger value="profile" className="justify-start data-[state=active]:bg-muted data-[state=active]:text-primary data-[state=active]:font-semibold">
+            Your Profile
+          </TabsTrigger>
+          <TabsTrigger value="company" className="justify-start data-[state=active]:bg-muted data-[state=active]:text-primary data-[state=active]:font-semibold">
+            Company Profile
+          </TabsTrigger>
+        </TabsList>
         <div className="grid gap-6">
-           <Card>
-            <CardHeader>
-              <CardTitle>Your Profile</CardTitle>
-              <CardDescription>
-                Manage your account details here.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Full Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Your name" {...field} />
-                        </FormControl>
-                        <FormDescription>This is your public display name.</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Your email address" {...field} readOnly disabled />
-                        </FormControl>
-                         <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" disabled={form.formState.isSubmitting}>Save Changes</Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+           <TabsContent value="profile">
+             <Card>
+              <CardHeader>
+                <CardTitle>Your Profile</CardTitle>
+                <CardDescription>
+                  Manage your personal account details here.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...profileForm}>
+                  <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-8">
+                    <FormField
+                      control={profileForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Full Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Your name" {...field} />
+                          </FormControl>
+                          <FormDescription>This is your public display name.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={profileForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Your email address" {...field} readOnly disabled />
+                          </FormControl>
+                           <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" disabled={profileForm.formState.isSubmitting}>Save Changes</Button>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+           </TabsContent>
+           <TabsContent value="company">
+             <Card>
+                <CardHeader>
+                  <CardTitle>Company Profile</CardTitle>
+                  <CardDescription>
+                    Manage your organization's details for invoicing and compliance.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                   <Form {...companyForm}>
+                    <form onSubmit={companyForm.handleSubmit(onCompanyProfileSubmit)} className="space-y-8">
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <FormField control={companyForm.control} name="companyName" render={({ field }) => (<FormItem><FormLabel>Company Name</FormLabel><FormControl><Input placeholder="Your Company Inc." {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="legalEntityType" render={({ field }) => (<FormItem><FormLabel>Legal Entity Type</FormLabel><FormControl><Input placeholder="e.g., Private Limited" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        </div>
+                        <div className="grid md:grid-cols-3 gap-6">
+                            <FormField control={companyForm.control} name="gstin" render={({ field }) => (<FormItem><FormLabel>GSTIN</FormLabel><FormControl><Input placeholder="29ABCDE1234F1Z5" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="pan" render={({ field }) => (<FormItem><FormLabel>PAN</FormLabel><FormControl><Input placeholder="ABCDE1234F" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField control={companyForm.control} name="cin" render={({ field }) => (<FormItem><FormLabel>CIN</FormLabel><FormControl><Input placeholder="L12345MH2023PLC123456" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        </div>
+                        <FormField control={companyForm.control} name="billingAddress" render={({ field }) => (<FormItem><FormLabel>Billing Address</FormLabel><FormControl><Textarea placeholder="123 Main Street..." {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={companyForm.control} name="branchAddress" render={({ field }) => (<FormItem><FormLabel>Branch Address (Optional)</FormLabel><FormControl><Textarea placeholder="456 Side Street..." {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        
+                        <CardTitle className="text-lg pt-4">Bank & Tax Details</CardTitle>
+
+                         <div className="grid md:grid-cols-2 gap-6">
+                            <FormField control={companyForm.control} name="placeOfSupply" render={({ field }) => (<FormItem><FormLabel>Place of Supply (State)</FormLabel><FormControl><Input placeholder="e.g., Maharashtra" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="defaultCurrency" render={({ field }) => (<FormItem><FormLabel>Default Currency</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select currency" /></SelectTrigger></FormControl><SelectContent><SelectItem value="INR">INR</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="bankName" render={({ field }) => (<FormItem><FormLabel>Bank Name</FormLabel><FormControl><Input placeholder="e.g., HDFC Bank" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="accountNumber" render={({ field }) => (<FormItem><FormLabel>Account Number</FormLabel><FormControl><Input placeholder="Your bank account number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="ifscCode" render={({ field }) => (<FormItem><FormLabel>IFSC Code</FormLabel><FormControl><Input placeholder="HDFC0001234" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={companyForm.control} name="upiId" render={({ field }) => (<FormItem><FormLabel>UPI ID</FormLabel><FormControl><Input placeholder="yourcompany@upi" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                         </div>
+
+                        <CardTitle className="text-lg pt-4">Branding</CardTitle>
+                        <div className="space-y-2">
+                            <Label>Company Logo</Label>
+                            <Input type="file" />
+                            <FormDescription>Upload your company logo. This will be embedded in your invoices.</FormDescription>
+                        </div>
+                         <div className="space-y-2">
+                            <Label>Signature / Stamp Image</Label>
+                            <Input type="file" />
+                            <FormDescription>Optional: Upload an image of your signature or company stamp.</FormDescription>
+                        </div>
+
+                      <Button type="submit" disabled={companyForm.formState.isSubmitting}>Save Company Profile</Button>
+                    </form>
+                   </Form>
+                </CardContent>
+             </Card>
+           </TabsContent>
         </div>
-      </div>
+      </Tabs>
     </main>
   );
 }
