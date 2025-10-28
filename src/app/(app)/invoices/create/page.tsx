@@ -39,8 +39,9 @@ export default function CreateInvoicePage() {
     const [lineItems, setLineItems] = useState<LineItem[]>([
         { id: 1, description: '', quantity: 1, price: 0, gstRate: 18 }
     ]);
-    const [totals, setTotals] = useState({ subtotal: 0, gst: 0, tcs: 0, grandTotal: 0 });
-    const [tcsRate, setTcsRate] = useState(0);
+    const [totals, setTotals] = useState({ subtotal: 0, gst: 0, withholdingTax: 0, grandTotal: 0 });
+    const [withholdingTaxType, setWithholdingTaxType] = useState('TCS');
+    const [withholdingTaxRate, setWithholdingTaxRate] = useState(0);
     
     // Mock company profile
     const [companyProfile, setCompanyProfile] = useState({
@@ -62,11 +63,11 @@ export default function CreateInvoicePage() {
             gst += itemTotal * (item.gstRate / 100);
         });
         
-        const tcsAmount = subtotal * (tcsRate / 100);
-        const grandTotal = subtotal + gst + tcsAmount;
+        const withholdingTaxAmount = subtotal * (withholdingTaxRate / 100);
+        const grandTotal = subtotal + gst + withholdingTaxAmount;
 
-        setTotals({ subtotal, gst, tcs: tcsAmount, grandTotal });
-    }, [lineItems, tcsRate]);
+        setTotals({ subtotal, gst, withholdingTax: withholdingTaxAmount, grandTotal });
+    }, [lineItems, withholdingTaxRate]);
 
     const addLineItem = () => {
         setLineItems([...lineItems, { id: Date.now(), description: '', quantity: 1, price: 0, gstRate: 18 }]);
@@ -77,9 +78,15 @@ export default function CreateInvoicePage() {
     };
 
     const handleItemChange = (id: number, field: keyof Omit<LineItem, 'id'>, value: string | number) => {
-        setLineItems(lineItems.map(item =>
-            item.id === id ? { ...item, [field]: typeof value === 'number' ? value : Number(value) || 0 } : item
-        ));
+        setLineItems(lineItems.map(item => {
+            if (item.id === id) {
+                if (field === 'quantity' || field === 'price' || field === 'gstRate') {
+                    return { ...item, [field]: Number(value) || 0 };
+                }
+                return { ...item, [field]: value };
+            }
+            return item;
+        }));
     };
 
     const generatePdf = () => {
@@ -143,10 +150,10 @@ export default function CreateInvoicePage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-2/5">Description</TableHead>
-                                        <TableHead className="w-[100px]">Qty</TableHead>
-                                        <TableHead className="w-[120px]">Price</TableHead>
+                                        <TableHead className="w-[120px]">Qty</TableHead>
+                                        <TableHead className="w-[150px]">Price</TableHead>
                                         <TableHead className="w-[120px]">GST (%)</TableHead>
-                                        <TableHead className="w-[120px] text-right">Total</TableHead>
+                                        <TableHead className="w-[150px] text-right">Total</TableHead>
                                         <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -203,9 +210,19 @@ export default function CreateInvoicePage() {
                                     <span>₹{totals.gst.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between items-center">
-                                    <Label htmlFor="tcs-rate">TCS</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Select value={withholdingTaxType} onValueChange={setWithholdingTaxType}>
+                                            <SelectTrigger className="w-[80px]">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="TCS">TCS</SelectItem>
+                                                <SelectItem value="TDS">TDS</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                     <div className="flex items-center gap-2 w-1/2">
-                                        <Select value={String(tcsRate)} onValueChange={(value) => setTcsRate(Number(value))}>
+                                        <Select value={String(withholdingTaxRate)} onValueChange={(value) => setWithholdingTaxRate(Number(value))}>
                                             <SelectTrigger id="tcs-rate">
                                                 <SelectValue />
                                             </SelectTrigger>
@@ -213,7 +230,7 @@ export default function CreateInvoicePage() {
                                                 {tcsTdsOptions.map(rate => <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>)}
                                             </SelectContent>
                                         </Select>
-                                        <span>₹{totals.tcs.toFixed(2)}</span>
+                                        <span>₹{totals.withholdingTax.toFixed(2)}</span>
                                     </div>
                                 </div>
                                 <div className="flex justify-between items-center font-semibold text-lg border-t pt-2 mt-2">
@@ -288,7 +305,7 @@ export default function CreateInvoicePage() {
                         <div className="w-1/2 space-y-2">
                              <div className="flex justify-between"><span className="text-muted-foreground">Subtotal:</span> ₹{totals.subtotal.toFixed(2)}</div>
                              <div className="flex justify-between"><span className="text-muted-foreground">GST:</span> ₹{totals.gst.toFixed(2)}</div>
-                             <div className="flex justify-between"><span className="text-muted-foreground">TCS ({tcsRate}%):</span> ₹{totals.tcs.toFixed(2)}</div>
+                             <div className="flex justify-between"><span className="text-muted-foreground">{withholdingTaxType} ({withholdingTaxRate}%):</span> ₹{totals.withholdingTax.toFixed(2)}</div>
                              <div className="flex justify-between font-bold text-xl border-t pt-2 mt-2"><span >Grand Total:</span> ₹{totals.grandTotal.toFixed(2)}</div>
                         </div>
                     </section>
