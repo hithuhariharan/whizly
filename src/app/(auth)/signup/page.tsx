@@ -51,7 +51,7 @@ export default function SignupPage() {
       setDocumentNonBlocking(userDocRef, {
         id: user.uid,
         email: user.email,
-        role: "Employee", // Default role
+        role: "Admin", // Default role for initial signup
         name: name,
       }, { merge: true });
 
@@ -75,7 +75,7 @@ export default function SignupPage() {
       setDocumentNonBlocking(userDocRef, {
         id: user.uid,
         email: user.email,
-        role: "Employee", // Default role
+        role: "Admin", // Default role for initial signup
         name: user.displayName,
       }, { merge: true });
       
