@@ -37,7 +37,8 @@ export type Invoice = {
   id: string;
   customer: string;
   amount: number;
-  status: 'Draft' | 'Pending' | 'Paid' | 'Overdue';
+  amountPaid: number;
+  status: 'Draft' | 'Pending' | 'Paid' | 'Overdue' | 'Partially Paid';
   issueDate: string;
   dueDate: string;
 };

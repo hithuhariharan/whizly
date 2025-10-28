@@ -39,9 +39,10 @@ export default function CreateInvoicePage() {
     const [lineItems, setLineItems] = useState<LineItem[]>([
         { id: 1, description: '', quantity: 1, price: 0, gstRate: 18 }
     ]);
-    const [totals, setTotals] = useState({ subtotal: 0, gst: 0, withholdingTax: 0, grandTotal: 0 });
+    const [totals, setTotals] = useState({ subtotal: 0, gst: 0, withholdingTax: 0, grandTotal: 0, amountPaid: 0 });
     const [withholdingTaxType, setWithholdingTaxType] = useState('TCS');
     const [withholdingTaxRate, setWithholdingTaxRate] = useState(0);
+    const [amountPaid, setAmountPaid] = useState(0);
     
     // Mock company profile
     const [companyProfile, setCompanyProfile] = useState({
@@ -66,8 +67,8 @@ export default function CreateInvoicePage() {
         const withholdingTaxAmount = subtotal * (withholdingTaxRate / 100);
         const grandTotal = subtotal + gst + withholdingTaxAmount;
 
-        setTotals({ subtotal, gst, withholdingTax: withholdingTaxAmount, grandTotal });
-    }, [lineItems, withholdingTaxRate]);
+        setTotals({ subtotal, gst, withholdingTax: withholdingTaxAmount, grandTotal, amountPaid });
+    }, [lineItems, withholdingTaxRate, amountPaid]);
 
     const addLineItem = () => {
         setLineItems([...lineItems, { id: Date.now(), description: '', quantity: 1, price: 0, gstRate: 18 }]);
@@ -196,9 +197,15 @@ export default function CreateInvoicePage() {
                         </div>
 
                         <div className="grid sm:grid-cols-2 gap-8">
-                            <div className="space-y-2">
-                                <Label htmlFor="notes">Notes</Label>
-                                <Textarea id="notes" placeholder="Any additional notes for the client..." />
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="amount-paid">Amount Paid</Label>
+                                  <Input id="amount-paid" type="number" value={amountPaid} onChange={(e) => setAmountPaid(Number(e.target.value) || 0)} placeholder="Enter amount already paid" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="notes">Notes</Label>
+                                    <Textarea id="notes" placeholder="Any additional notes for the client..." />
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
@@ -237,6 +244,14 @@ export default function CreateInvoicePage() {
                                     <span>Grand Total</span>
                                     <span>₹{totals.grandTotal.toFixed(2)}</span>
                                 </div>
+                                <div className="flex justify-between items-center text-green-600">
+                                    <span>Amount Paid</span>
+                                    <span>- ₹{totals.amountPaid.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between items-center font-bold text-xl border-t pt-2 mt-2">
+                                    <span>Balance Due</span>
+                                    <span>₹{(totals.grandTotal - totals.amountPaid).toFixed(2)}</span>
+                                </div>
                             </div>
                         </div>
 
@@ -249,7 +264,7 @@ export default function CreateInvoicePage() {
             </div>
             {/* Hidden printable invoice */}
             <div id="invoice-preview" className="p-8 bg-white text-black absolute -z-10 -left-[9999px]">
-                <div className="w-[210mm] h-[297mm] p-8 box-border">
+                <div className="w-[210mm] h-[297mm] p-8 box-border flex flex-col">
                     <header className="flex justify-between items-start pb-4 border-b">
                         <div>
                             <img src={companyProfile.logo} alt="Company Logo" className="h-16" />
@@ -307,9 +322,11 @@ export default function CreateInvoicePage() {
                              <div className="flex justify-between"><span className="text-muted-foreground">GST:</span> ₹{totals.gst.toFixed(2)}</div>
                              <div className="flex justify-between"><span className="text-muted-foreground">{withholdingTaxType} ({withholdingTaxRate}%):</span> ₹{totals.withholdingTax.toFixed(2)}</div>
                              <div className="flex justify-between font-bold text-xl border-t pt-2 mt-2"><span >Grand Total:</span> ₹{totals.grandTotal.toFixed(2)}</div>
+                             <div className="flex justify-between text-green-600"><span >Amount Paid:</span> - ₹{totals.amountPaid.toFixed(2)}</div>
+                             <div className="flex justify-between font-bold text-xl border-t pt-2 mt-2"><span >Balance Due:</span> ₹{(totals.grandTotal - totals.amountPaid).toFixed(2)}</div>
                         </div>
                     </section>
-                     <footer className="absolute bottom-8 left-8 right-8 text-center text-xs text-muted-foreground">
+                     <footer className="mt-auto text-center text-xs text-muted-foreground pt-8">
                         <p>Thank you for your business!</p>
                     </footer>
                 </div>

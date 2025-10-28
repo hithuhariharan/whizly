@@ -1,7 +1,7 @@
 
 'use client';
 
-import { DollarSign, IndianRupee, Users, FileWarning } from 'lucide-react';
+import { DollarSign, IndianRupee, Users, FileWarning, Calendar as CalendarIcon, Download } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -20,16 +20,21 @@ import {
 import { Badge } from '@/components/ui/badge';
 import type { Invoice } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { DatePickerWithRange } from '@/components/ui/date-picker-with-range';
+import { useState } from 'react';
+import { DateRange } from 'react-day-picker';
+import { addDays, format } from 'date-fns';
 
 
 type Sale = Invoice & { soldBy: string; soldByAvatar: string };
 
 const mockSales: Sale[] = [
-  { id: 'INV-001', customer: 'Acme Inc.', amount: 2500, status: 'Paid', issueDate: '2023-10-15', dueDate: '2023-11-15', soldBy: 'John Doe', soldByAvatar: 'https://picsum.photos/seed/avatar1/40/40' },
-  { id: 'INV-002', customer: 'Innovate LLC', amount: 1500, status: 'Pending', issueDate: '2023-10-20', dueDate: '2023-11-20', soldBy: 'Jane Smith', soldByAvatar: 'https://picsum.photos/seed/avatar2/40/40' },
-  { id: 'INV-003', customer: 'Solutions Co.', amount: 3500, status: 'Paid', issueDate: '2023-10-25', dueDate: '2023-11-25', soldBy: 'John Doe', soldByAvatar: 'https://picsum.photos/seed/avatar1/40/40' },
-  { id: 'INV-004', customer: 'Tech Gadgets', amount: 500, status: 'Overdue', issueDate: '2023-09-01', dueDate: '2023-10-01', soldBy: 'Peter Jones', soldByAvatar: 'https://picsum.photos/seed/avatar3/40/40' },
-  { id: 'INV-005', customer: 'Marketing Pros', amount: 4200, status: 'Pending', issueDate: '2023-11-01', dueDate: '2023-12-01', soldBy: 'Jane Smith', soldByAvatar: 'https://picsum.photos/seed/avatar2/40/40' },
+  { id: 'INV-001', customer: 'Acme Inc.', amount: 2500, status: 'Paid', issueDate: '2023-10-15', dueDate: '2023-11-15', soldBy: 'John Doe', soldByAvatar: 'https://picsum.photos/seed/avatar1/40/40', amountPaid: 2500 },
+  { id: 'INV-002', customer: 'Innovate LLC', amount: 1500, status: 'Partially Paid', issueDate: '2023-10-20', dueDate: '2023-11-20', soldBy: 'Jane Smith', soldByAvatar: 'https://picsum.photos/seed/avatar2/40/40', amountPaid: 750 },
+  { id: 'INV-003', customer: 'Solutions Co.', amount: 3500, status: 'Paid', issueDate: '2023-11-05', dueDate: '2023-12-05', soldBy: 'John Doe', soldByAvatar: 'https://picsum.photos/seed/avatar1/40/40', amountPaid: 3500 },
+  { id: 'INV-004', customer: 'Tech Gadgets', amount: 500, status: 'Overdue', issueDate: '2023-09-01', dueDate: '2023-10-01', soldBy: 'Peter Jones', soldByAvatar: 'https://picsum.photos/seed/avatar3/40/40', amountPaid: 0 },
+  { id: 'INV-005', customer: 'Marketing Pros', amount: 4200, status: 'Pending', issueDate: '2023-11-01', dueDate: '2023-12-01', soldBy: 'Jane Smith', soldByAvatar: 'https://picsum.photos/seed/avatar2/40/40', amountPaid: 0 },
 ];
 
 const statusStyles = {
@@ -37,18 +42,52 @@ const statusStyles = {
   Pending: 'secondary',
   Overdue: 'destructive',
   Draft: 'default',
+  'Partially Paid': 'secondary',
 } as const;
 
 export default function AccountsPage() {
-    const totalRevenue = mockSales.filter(s => s.status === 'Paid').reduce((acc, sale) => acc + sale.amount, 0);
-    const paidInvoices = mockSales.filter(s => s.status === 'Paid').length;
-    const overdueInvoices = mockSales.filter(s => s.status === 'Overdue').length;
+    const [date, setDate] = useState<DateRange | undefined>({
+        from: addDays(new Date(), -30),
+        to: new Date(),
+    });
+
+    const filteredSales = mockSales.filter(sale => {
+        if (!date?.from || !date?.to) return true;
+        const issueDate = new Date(sale.issueDate);
+        return issueDate >= date.from && issueDate <= date.to;
+    });
+
+    const totalRevenue = filteredSales.filter(s => s.status === 'Paid' || s.status === 'Partially Paid').reduce((acc, sale) => acc + sale.amountPaid, 0);
+    const paidInvoices = filteredSales.filter(s => s.status === 'Paid').length;
+    const overdueInvoices = filteredSales.filter(s => s.status === 'Overdue').length;
+
+    const exportToCSV = () => {
+        const headers = ['Invoice #', 'Customer', 'Amount', 'Amount Paid', 'Status', 'Sold By', 'Issue Date'];
+        const rows = filteredSales.map(sale => 
+            [sale.id, sale.customer, sale.amount, sale.amountPaid, sale.status, sale.soldBy, sale.issueDate].join(',')
+        );
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "sales_ledger.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="flex items-center">
         <h1 className="font-semibold text-lg md:text-2xl">Accounting Dashboard</h1>
+        <div className="ml-auto flex items-center gap-2">
+            <DatePickerWithRange date={date} setDate={setDate} />
+            <Button onClick={exportToCSV} variant="outline">
+                <Download className="mr-2 h-4 w-4" />
+                Export to CSV
+            </Button>
+        </div>
       </div>
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -96,7 +135,7 @@ export default function AccountsPage() {
         <CardHeader>
           <CardTitle>Sales Ledger</CardTitle>
           <CardDescription>
-            A record of all invoices created.
+            A record of all invoices created within the selected date range.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -112,7 +151,7 @@ export default function AccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockSales.map((sale) => (
+              {filteredSales.map((sale) => (
                 <TableRow key={sale.id}>
                   <TableCell className="font-medium">{sale.id}</TableCell>
                   <TableCell>{sale.customer}</TableCell>
