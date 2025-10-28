@@ -18,7 +18,7 @@ import { useAuth, useUser, doc, setDocumentNonBlocking, useFirestore } from '@/f
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getDoc } from 'firebase/firestore';
+import { getDoc, writeBatch, collection } from 'firebase/firestore';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -56,12 +56,25 @@ export default function LoginPage() {
       
       const docSnap = await getDoc(userDocRef);
       if (!docSnap.exists()) {
-        setDocumentNonBlocking(userDocRef, {
+        const batch = writeBatch(firestore);
+        
+        const tenantRef = doc(collection(firestore, 'tenants'));
+        batch.set(tenantRef, {
+          id: tenantRef.id,
+          name: `${user.displayName}'s Organization`,
+          ownerId: user.uid,
+          createdAt: new Date().toISOString(),
+        });
+        
+        batch.set(userDocRef, {
             id: user.uid,
             email: user.email,
             role: "Admin",
             name: user.displayName,
-        }, { merge: true });
+            tenantId: tenantRef.id,
+        });
+
+        await batch.commit();
       }
     } catch (error: any) {
        if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
@@ -134,3 +147,5 @@ export default function LoginPage() {
     </Card>
   );
 }
+
+    

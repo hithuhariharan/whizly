@@ -46,12 +46,9 @@
           "description": "The user's email address.",
           "format": "email"
         },
-        "tenantIds": {
-          "type": "array",
-          "description": "References to Tenants this user belongs to. (Relationship: User N:N Tenant)",
-          "items": {
-            "type": "string"
-          }
+        "tenantId": {
+          "type": "string",
+          "description": "The ID of the tenant this user belongs to."
         },
         "role": {
           "type": "string",
@@ -62,7 +59,8 @@
       "required": [
         "id",
         "email",
-        "role"
+        "role",
+        "tenantId"
       ]
     },
     "Lead": {
@@ -319,7 +317,7 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profiles. `tenantIds` indicates tenant membership, enabling role-based access within each tenant.",
+          "description": "Stores user profiles. `tenantId` indicates which organization the user belongs to, enabling role-based access and data segregation.",
           "params": [
             {
               "name": "userId",
@@ -335,7 +333,7 @@
           "schema": {
             "$ref": "#/backend/entities/Lead"
           },
-          "description": "Stores lead data. The `assignedTo` field allows leads to be assigned to specific users.",
+          "description": "Stores lead data, which is nested under a tenant to ensure data isolation.",
           "params": [
             {
               "name": "tenantId",
@@ -375,7 +373,7 @@
           "schema": {
             "$ref": "#/backend/entities/Conversation"
           },
-          "description": "Stores conversation data. This is segregated by tenant. Conversations are implicitly linked to leads via the `leadId` field.",
+          "description": "Stores conversation data, segregated by tenant.",
           "params": [
             {
               "name": "tenantId",
@@ -387,28 +385,9 @@
             }
           ]
         }
-      },
-      {
-        "path": "/tenants/{tenantId}/accountAccess/{accessId}",
-        "definition": {
-          "entityName": "AccountAccess",
-          "schema": {
-            "$ref": "#/backend/entities/AccountAccess"
-          },
-          "description": "Explicitly models account access at the tenant level. Grants/revokes `canViewChat` and `canEditLead` permissions on a per-user, per-lead basis. Includes denormalized fields 'userId' and 'leadId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "The unique identifier for the tenant."
-            },
-            {
-              "name": "accessId",
-              "description": "The unique identifier for the account access entry."
-            }
-          ]
-        }
       }
     ],
-    "reasoning": "This Firestore structure prioritizes authorization independence and QAPs. It separates data based on access needs and denormalizes authorization data to avoid `get()` calls in security rules.  \n\n*   **/tenants/{tenantId}**: Stores tenant-specific data. \n*   **/users/{userId}**: Stores user profiles. `tenantIds` indicates tenant membership, enabling role-based access within each tenant.\n*   **/tenants/{tenantId}/leads/{leadId}**:  Stores lead data. The `assignedTo` field allows leads to be assigned to specific users.\n*   **/tenants/{tenantId}/chatbotAgents/{agentId}**: Stores ChatbotAgent data.\n*   **/tenants/{tenantId}/conversations/{conversationId}**: Stores conversation data. This is segregated by tenant. Conversations are implicitly linked to leads via the `leadId` field.\n*   **/tenants/{tenantId}/accountAccess/{accessId}**: Explicitly models account access at the tenant level. This is CRUCIAL. This allows admins/managers to grant/revoke `canViewChat` and `canEditLead` permissions on a per-user, per-lead basis.\n\n\n**Authorization Independence:**\n\n*   The `leads` subcollection under each `tenant` denormalizes authorization data. For example, if lead access depends on user role within the tenant, the relevant role information is copied into the lead document (or the `accountAccess` document). This eliminates the need for security rules to `get()` user documents to check roles, enabling atomic operations.\n\n**QAPs (Rules are not Filters):**\n\n*   Segregation: Sensitive data is stored in tenant-specific subcollections (`/tenants/{tenantId}/leads/{leadId}`).  This structural segregation prevents users from listing data they shouldn't have access to. Security rules can efficiently enforce access based on the tenant ID and user roles within that tenant.\n*   Account Access Collection: Explicit modeling of account access (`/tenants/{tenantId}/accountAccess/{accessId}`) ensures that list operations on conversations and leads are secure.  Rules can check the `accountAccess` collection to ensure the requesting user has the `canViewChat` permission for the associated lead before allowing access to conversation messages."
+    "reasoning": "This Firestore structure is built around a multi-tenant model to ensure data isolation between different organizations.\n\n*   **/tenants/{tenantId}**: This is the root for all tenant-specific information.\n*   **/users/{userId}**: This is a top-level collection for authentication purposes. Crucially, each user document contains a `tenantId` field, which is the cornerstone of our security rules. This allows us to quickly identify which tenant a user belongs to.\n*   **/tenants/{tenantId}/{collection}/{docId}**: All other business-critical data (leads, agents, conversations, etc.) is stored in subcollections under its respective tenant. This structure makes it impossible for a query to accidentally leak data from another tenant.\n\n**Security Rules Strategy:**\n\nThe rules are designed to enforce tenant boundaries strictly:\n1.  **User Access**: A user can only read their own user document or the documents of other users who share the same `tenantId`.\n2.  **Admin Privileges**: An 'Admin' role allows a user to update or delete other users within the *same tenant*.\n3.  **Subcollection Access**: All access to data within `/tenants/{tenantId}` subcollections is gated by checking if the requesting user's `tenantId` matches the `{tenantId}` in the path."
   }
 }
+    

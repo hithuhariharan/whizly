@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -21,6 +21,7 @@ type UserProfile = {
   name: string;
   email: string;
   role: 'Admin' | 'Manager' | 'Employee';
+  tenantId: string;
 };
 
 export default function TeamPage() {
@@ -33,9 +34,13 @@ export default function TeamPage() {
     if (!user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
-  const { data: currentUserProfile, isLoading: isProfileLoading } = useDoc<{ role: string }>(userDocRef);
+  const { data: currentUserProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
 
-  const usersCollectionRef = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const usersCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !currentUserProfile?.tenantId) return null;
+    return query(collection(firestore, 'users'), where('tenantId', '==', currentUserProfile.tenantId));
+  }, [firestore, currentUserProfile?.tenantId]);
+
   const { data: users, isLoading: areUsersLoading } = useCollection<UserProfile>(usersCollectionRef);
 
   useEffect(() => {
@@ -49,7 +54,10 @@ export default function TeamPage() {
         router.push('/dashboard');
       }
     }
-  }, [isUserLoading, isProfileLoading, currentUserProfile, router, toast]);
+     if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+  }, [isUserLoading, isProfileLoading, currentUserProfile, router, toast, user]);
   
   const handleRoleChange = (userId: string, newRole: UserProfile['role']) => {
     if(user?.uid === userId) {
@@ -101,7 +109,7 @@ export default function TeamPage() {
       <Card>
         <CardHeader>
           <CardTitle>Manage User Roles</CardTitle>
-          <CardDescription>View users and assign roles to manage access.</CardDescription>
+          <CardDescription>View users and assign roles to manage access within your organization.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -148,3 +156,5 @@ export default function TeamPage() {
     </main>
   );
 }
+
+    

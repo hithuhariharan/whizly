@@ -19,7 +19,7 @@ import { useAuth, useFirestore, useUser, setDocumentNonBlocking, doc } from '@/f
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getDoc } from 'firebase/firestore';
+import { getDoc, writeBatch } from 'firebase/firestore';
 
 
 export default function SignupPage() {
@@ -47,13 +47,26 @@ export default function SignupPage() {
 
       await updateProfile(user, { displayName: name });
 
+      const batch = writeBatch(firestore);
+      
+      const tenantRef = doc(collection(firestore, 'tenants'));
+      batch.set(tenantRef, {
+        id: tenantRef.id,
+        name: `${name}'s Organization`,
+        ownerId: user.uid,
+        createdAt: new Date().toISOString(),
+      });
+
       const userDocRef = doc(firestore, "users", user.uid);
-      setDocumentNonBlocking(userDocRef, {
+      batch.set(userDocRef, {
         id: user.uid,
         email: user.email,
-        role: "Admin", // Default role for initial signup
+        role: "Admin", // First user is always Admin
         name: name,
-      }, { merge: true });
+        tenantId: tenantRef.id,
+      });
+
+      await batch.commit();
 
     } catch (error: any) {
       toast({
@@ -73,12 +86,25 @@ export default function SignupPage() {
         
         const docSnap = await getDoc(userDocRef);
         if (!docSnap.exists()) {
-            setDocumentNonBlocking(userDocRef, {
+            const batch = writeBatch(firestore);
+            
+            const tenantRef = doc(collection(firestore, 'tenants'));
+            batch.set(tenantRef, {
+              id: tenantRef.id,
+              name: `${user.displayName}'s Organization`,
+              ownerId: user.uid,
+              createdAt: new Date().toISOString(),
+            });
+
+            batch.set(userDocRef, {
                 id: user.uid,
                 email: user.email,
-                role: "Admin", // Default role for new users via Google
+                role: "Admin",
                 name: user.displayName,
-            }, { merge: true });
+                tenantId: tenantRef.id,
+            });
+            
+            await batch.commit();
         }
     } catch (error: any) {
         if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
@@ -150,3 +176,5 @@ export default function SignupPage() {
     </Card>
   );
 }
+
+    
