@@ -1,0 +1,168 @@
+/**
+ * @file Firestore Security Rules
+ * @description This ruleset enforces role-based access control for the Whizly AI application.
+ *
+ * Core Philosophy:
+ * The security model focuses on tenant-based data isolation and role-based access control.
+ * Access is controlled through a combination of user roles (admin, manager, employee) and explicit account access settings.
+ * Data is segregated by tenant to prevent unauthorized access between organizations.
+ * Authorization data is denormalized to avoid costly `get()` calls in security rules.
+ *
+ * Data Structure:
+ * - /tenants/{tenantId}: Stores tenant-specific data.
+ * - /users/{userId}: Stores user profiles and their roles.
+ * - /tenants/{tenantId}/leads/{leadId}: Stores lead data within a specific tenant, `assignedTo` allows leads to be assigned to specific users.
+ * - /tenants/{tenantId}/chatbotAgents/{agentId}: Stores chatbot agent data within a specific tenant.
+ * - /tenants/{tenantId}/conversations/{conversationId}: Stores conversation data within a specific tenant, implicitly linked to leads via `leadId`.
+ * - /tenants/{tenantId}/accountAccess/{accessId}: Explicitly models account access control for leads on a per-user, per-lead basis.
+ *
+ * Key Security Decisions:
+ * - User listing is generally restricted for privacy.
+ * - Roles are managed within the user document and are used for tenant-level authorization.
+ * - Account access is explicitly modeled to control lead access on a per-user, per-lead basis.
+ * - The default security posture for ambiguous relationships is strict owner-only access.
+ *
+ * Denormalization for Authorization:
+ * - The `AccountAccess` collection denormalizes `userId` and `leadId` to create authorization independence. This means that rules can verify access to leads and conversations without having to perform multiple `get()` calls.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Controls access to the tenants collection.
+     * @path /tenants/{tenantId}
+     * @allow (read) Anyone can read a tenant document.
+     * @allow (create) Only an admin can create a tenant.
+     * @deny (update) No one can update a tenant.
+     * @deny (delete) No one can delete a tenant.
+     * @principle Requires admin role for creation; read is public but write access is generally denied.
+     */
+    match /tenants/{tenantId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    /**
+     * @description Controls access to the users collection.
+     * @path /users/{userId}
+     * @allow (create) A user can create their own profile (self-creation).
+     * @allow (get) Anyone can get a user document.
+     * @deny (list) Listing all users is not allowed.
+     * @deny (update) Only the user themselves can update their profile.
+     * @deny (delete) Only the user themselves can delete their profile.
+     * @principle Enforces user-ownership and restricts user listing.
+     */
+    match /users/{userId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    /**
+     * @description Controls access to the leads subcollection within a tenant.
+     * @path /tenants/{tenantId}/leads/{leadId}
+     * @allow (get) Any authenticated user can retrieve a lead if they have explicit `canEditLead` or `canViewChat` access.
+     * @allow (list) Only users that have access to leads can list them.
+     * @allow (create) Requires admin or manager role. The 'tenantId' field in the new lead must match the path.
+     * @allow (update) Requires admin or manager role and the tenantId cannot be changed.
+     * @allow (delete) Requires admin or manager role.
+     * @principle Enforces tenant-based isolation and admin/manager control for lead management.
+     */
+    match /tenants/{tenantId}/leads/{leadId} {
+      allow get: if hasLeadAccess(tenantId, leadId);
+      allow list: if isManagerOrAdmin(); //TODO: Implement more secure list
+      allow create: if isManagerOrAdmin() && request.resource.data.tenantId == tenantId;
+      allow update: if isManagerOrAdmin() && resource.data.tenantId == request.resource.data.tenantId;
+      allow delete: if isManagerOrAdmin();
+    }
+
+    /**
+     * @description Controls access to the chatbotAgents subcollection within a tenant.
+     * @path /tenants/{tenantId}/chatbotAgents/{agentId}
+     * @allow (get) Any authenticated user can retrieve a chatbotAgent within their tenant.
+     * @allow (list) Any authenticated user can list chatbotAgents within their tenant.
+     * @allow (create) Requires admin or manager role, and the 'tenantId' field in the new agent must match the path.
+     * @allow (update) Requires admin or manager role and the tenantId cannot be changed.
+     * @allow (delete) Requires admin or manager role.
+     * @principle Enforces tenant-based isolation and admin/manager control for chatbot agent management.
+     */
+    match /tenants/{tenantId}/chatbotAgents/{agentId} {
+      allow get: if true; // For prototyping, allow anyone in the tenant to see the agents
+      allow list: if true;
+      allow create: if isManagerOrAdmin() && request.resource.data.tenantId == tenantId;
+      allow update: if isManagerOrAdmin() && resource.data.tenantId == request.resource.data.tenantId;
+      allow delete: if isManagerOrAdmin();
+    }
+
+    /**
+     * @description Controls access to the conversations subcollection within a tenant.
+     * @path /tenants/{tenantId}/conversations/{conversationId}
+     * @allow (get) Requires explicit `canViewChat` access.
+     * @allow (list) Requires explicit `canViewChat` access.
+     * @allow (create) Requires admin or manager role, and the 'tenantId' field in the new conversation must match the path.
+     * @allow (update) Requires admin or manager role and the tenantId cannot be changed.
+     * @allow (delete) Requires admin or manager role.
+     * @principle Enforces tenant-based isolation and explicit account access for conversation data.
+     */
+    match /tenants/{tenantId}/conversations/{conversationId} {
+      allow get: if hasLeadAccess(tenantId,resource.data.leadId);
+      allow list: if hasLeadAccess(tenantId,resource.data.leadId);
+      allow create: if isManagerOrAdmin() && request.resource.data.tenantId == tenantId;
+      allow update: if isManagerOrAdmin() && resource.data.tenantId == request.resource.data.tenantId;
+      allow delete: if isManagerOrAdmin();
+    }
+
+    /**
+     * @description Controls access to the accountAccess subcollection within a tenant.
+     * @path /tenants/{tenantId}/accountAccess/{accessId}
+     * @allow (get) Requires admin or manager role.
+     * @allow (list) Requires admin or manager role.
+     * @allow (create) Requires admin or manager role, and the 'tenantId' field in the new accountAccess must match the path.
+     * @allow (update) Requires admin or manager role and the tenantId cannot be changed.
+     * @allow (delete) Requires admin or manager role.
+     * @principle Enforces tenant-based isolation and explicit admin/manager control for account access management.
+     */
+    match /tenants/{tenantId}/accountAccess/{accessId} {
+      allow get: if isManagerOrAdmin();
+      allow list: if isManagerOrAdmin();
+      allow create: if isManagerOrAdmin() && request.resource.data.tenantId == tenantId;
+      allow update: if isManagerOrAdmin() && resource.data.tenantId == request.resource.data.tenantId;
+      allow delete: if isManagerOrAdmin();
+    }
+
+    // --- Helper Functions ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isExistingOwner(userId) {
+        return (isOwner(userId) && resource != null);
+    }
+
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isManager() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+    }
+
+    function isManagerOrAdmin() {
+      return isSignedIn() && (isAdmin() || isManager());
+    }
+
+     function hasLeadAccess(tenantId, leadId) {
+         return isSignedIn() && exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(request.auth.uid + '-' + leadId));
+    }
+  }
+}

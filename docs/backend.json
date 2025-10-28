@@ -1,0 +1,413 @@
+{
+  "entities": {
+    "Tenant": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Tenant",
+      "type": "object",
+      "description": "Represents a tenant within the Whizly AI application. A tenant isolates data for different users or organizations.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Tenant entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the tenant."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Reference to User who owns the tenant. (Relationship: User 1:N Tenant)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the tenant was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "ownerId",
+        "createdAt"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the Whizly AI application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "tenantIds": {
+          "type": "array",
+          "description": "References to Tenants this user belongs to. (Relationship: User N:N Tenant)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role within the application (e.g., admin, manager, employee)."
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "role"
+      ]
+    },
+    "Lead": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Lead",
+      "type": "object",
+      "description": "Represents a lead in the CRM system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Lead entity."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to Tenant this lead belongs to. (Relationship: Tenant 1:N Lead)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the lead."
+        },
+        "contactInfo": {
+          "type": "string",
+          "description": "Contact information for the lead."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the lead (e.g., new, contacted, qualified)."
+        },
+        "assignedTo": {
+          "type": "string",
+          "description": "Reference to User assigned to this lead. (Relationship: User 1:N Lead)"
+        }
+      },
+      "required": [
+        "id",
+        "tenantId",
+        "name",
+        "contactInfo",
+        "status"
+      ]
+    },
+    "WhatsAppIntegration": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WhatsAppIntegration",
+      "type": "object",
+      "description": "Represents a WhatsApp integration configuration for a tenant.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the WhatsAppIntegration entity."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to Tenant this integration belongs to. (Relationship: Tenant 1:N WhatsAppIntegration)"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "The API key for the WhatsApp integration."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The phone number associated with the WhatsApp integration."
+        }
+      },
+      "required": [
+        "id",
+        "tenantId",
+        "apiKey",
+        "phoneNumber"
+      ]
+    },
+    "ChatbotAgent": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ChatbotAgent",
+      "type": "object",
+      "description": "Represents a chatbot agent trained to handle conversations.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ChatbotAgent entity."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to Tenant this agent belongs to. (Relationship: Tenant 1:N ChatbotAgent)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the chatbot agent."
+        },
+        "trainingData": {
+          "type": "string",
+          "description": "The data used to train the chatbot agent; could be a reference to a file or stored text."
+        }
+      },
+      "required": [
+        "id",
+        "tenantId",
+        "name",
+        "trainingData"
+      ]
+    },
+    "Conversation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Conversation",
+      "type": "object",
+      "description": "Represents a conversation between a user and a chatbot agent.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Conversation entity."
+        },
+        "leadId": {
+          "type": "string",
+          "description": "Reference to the lead associated with this conversation. (Relationship: Lead 1:N Conversation)"
+        },
+        "agentId": {
+          "type": "string",
+          "description": "Reference to the ChatbotAgent handling the conversation. (Relationship: ChatbotAgent 1:N Conversation)"
+        },
+        "messages": {
+          "type": "array",
+          "description": "An array of message objects within the conversation.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "leadId",
+        "agentId",
+        "messages"
+      ]
+    },
+    "RazorpayIntegration": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RazorpayIntegration",
+      "type": "object",
+      "description": "Represents a Razorpay integration configuration for a tenant.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the RazorpayIntegration entity."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to Tenant this integration belongs to. (Relationship: Tenant 1:N RazorpayIntegration)"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "The API key for the Razorpay integration."
+        },
+        "apiSecret": {
+          "type": "string",
+          "description": "The API secret for the Razorpay integration."
+        }
+      },
+      "required": [
+        "id",
+        "tenantId",
+        "apiKey",
+        "apiSecret"
+      ]
+    },
+    "MetaPixelIntegration": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MetaPixelIntegration",
+      "type": "object",
+      "description": "Represents a Meta Pixel integration configuration for a tenant.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the MetaPixelIntegration entity."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to Tenant this integration belongs to. (Relationship: Tenant 1:N MetaPixelIntegration)"
+        },
+        "pixelId": {
+          "type": "string",
+          "description": "The Pixel ID for the Meta Pixel integration."
+        }
+      },
+      "required": [
+        "id",
+        "tenantId",
+        "pixelId"
+      ]
+    },
+    "AccountAccess": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AccountAccess",
+      "type": "object",
+      "description": "Represents the access control for leads based on user roles.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the AccountAccess entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the user this access is granted to. (Relationship: User 1:N AccountAccess)"
+        },
+        "leadId": {
+          "type": "string",
+          "description": "Reference to the lead this access pertains to. (Relationship: Lead 1:N AccountAccess)"
+        },
+        "canViewChat": {
+          "type": "boolean",
+          "description": "Indicates whether the user can view the chat associated with the lead."
+        },
+        "canEditLead": {
+          "type": "boolean",
+          "description": "Indicates whether the user can edit lead information."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "leadId",
+        "canViewChat",
+        "canEditLead"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/tenants/{tenantId}",
+        "definition": {
+          "entityName": "Tenant",
+          "schema": {
+            "$ref": "#/backend/entities/Tenant"
+          },
+          "description": "Stores tenant-specific data. Each tenant isolates data for different users or organizations.",
+          "params": [
+            {
+              "name": "tenantId",
+              "description": "The unique identifier for the tenant."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles. `tenantIds` indicates tenant membership, enabling role-based access within each tenant.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tenants/{tenantId}/leads/{leadId}",
+        "definition": {
+          "entityName": "Lead",
+          "schema": {
+            "$ref": "#/backend/entities/Lead"
+          },
+          "description": "Stores lead data. The `assignedTo` field allows leads to be assigned to specific users.",
+          "params": [
+            {
+              "name": "tenantId",
+              "description": "The unique identifier for the tenant."
+            },
+            {
+              "name": "leadId",
+              "description": "The unique identifier for the lead."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tenants/{tenantId}/chatbotAgents/{agentId}",
+        "definition": {
+          "entityName": "ChatbotAgent",
+          "schema": {
+            "$ref": "#/backend/entities/ChatbotAgent"
+          },
+          "description": "Stores ChatbotAgent data, segregated by tenant.",
+          "params": [
+            {
+              "name": "tenantId",
+              "description": "The unique identifier for the tenant."
+            },
+            {
+              "name": "agentId",
+              "description": "The unique identifier for the chatbot agent."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tenants/{tenantId}/conversations/{conversationId}",
+        "definition": {
+          "entityName": "Conversation",
+          "schema": {
+            "$ref": "#/backend/entities/Conversation"
+          },
+          "description": "Stores conversation data. This is segregated by tenant. Conversations are implicitly linked to leads via the `leadId` field.",
+          "params": [
+            {
+              "name": "tenantId",
+              "description": "The unique identifier for the tenant."
+            },
+            {
+              "name": "conversationId",
+              "description": "The unique identifier for the conversation."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tenants/{tenantId}/accountAccess/{accessId}",
+        "definition": {
+          "entityName": "AccountAccess",
+          "schema": {
+            "$ref": "#/backend/entities/AccountAccess"
+          },
+          "description": "Explicitly models account access at the tenant level. Grants/revokes `canViewChat` and `canEditLead` permissions on a per-user, per-lead basis. Includes denormalized fields 'userId' and 'leadId' for authorization independence.",
+          "params": [
+            {
+              "name": "tenantId",
+              "description": "The unique identifier for the tenant."
+            },
+            {
+              "name": "accessId",
+              "description": "The unique identifier for the account access entry."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This Firestore structure prioritizes authorization independence and QAPs. It separates data based on access needs and denormalizes authorization data to avoid `get()` calls in security rules.  \n\n*   **/tenants/{tenantId}**: Stores tenant-specific data. \n*   **/users/{userId}**: Stores user profiles. `tenantIds` indicates tenant membership, enabling role-based access within each tenant.\n*   **/tenants/{tenantId}/leads/{leadId}**:  Stores lead data. The `assignedTo` field allows leads to be assigned to specific users.\n*   **/tenants/{tenantId}/chatbotAgents/{agentId}**: Stores ChatbotAgent data.\n*   **/tenants/{tenantId}/conversations/{conversationId}**: Stores conversation data. This is segregated by tenant. Conversations are implicitly linked to leads via the `leadId` field.\n*   **/tenants/{tenantId}/accountAccess/{accessId}**: Explicitly models account access at the tenant level. This is CRUCIAL. This allows admins/managers to grant/revoke `canViewChat` and `canEditLead` permissions on a per-user, per-lead basis.\n\n\n**Authorization Independence:**\n\n*   The `leads` subcollection under each `tenant` denormalizes authorization data. For example, if lead access depends on user role within the tenant, the relevant role information is copied into the lead document (or the `accountAccess` document). This eliminates the need for security rules to `get()` user documents to check roles, enabling atomic operations.\n\n**QAPs (Rules are not Filters):**\n\n*   Segregation: Sensitive data is stored in tenant-specific subcollections (`/tenants/{tenantId}/leads/{leadId}`).  This structural segregation prevents users from listing data they shouldn't have access to. Security rules can efficiently enforce access based on the tenant ID and user roles within that tenant.\n*   Account Access Collection: Explicit modeling of account access (`/tenants/{tenantId}/accountAccess/{accessId}`) ensures that list operations on conversations and leads are secure.  Rules can check the `accountAccess` collection to ensure the requesting user has the `canViewChat` permission for the associated lead before allowing access to conversation messages."
+  }
+}
