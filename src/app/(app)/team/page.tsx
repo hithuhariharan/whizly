@@ -39,13 +39,15 @@ export default function TeamPage() {
   const { data: users, isLoading: areUsersLoading } = useCollection<UserProfile>(usersCollectionRef);
 
   useEffect(() => {
-    if (!isUserLoading && !isProfileLoading && currentUserProfile && currentUserProfile.role !== 'Admin') {
-      toast({
-        variant: 'destructive',
-        title: 'Access Denied',
-        description: 'You do not have permission to view this page.',
-      });
-      router.push('/dashboard');
+    if (!isUserLoading && !isProfileLoading && currentUserProfile) {
+      if (currentUserProfile.role !== 'Admin') {
+        toast({
+          variant: 'destructive',
+          title: 'Access Denied',
+          description: 'You do not have permission to view this page.',
+        });
+        router.push('/dashboard');
+      }
     }
   }, [isUserLoading, isProfileLoading, currentUserProfile, router, toast]);
   
