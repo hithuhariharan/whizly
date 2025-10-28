@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Bot, BrainCircuit, Loader2, Sparkles, Wand2, Paperclip, Inbox } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Bot, BrainCircuit, Loader2, Sparkles, Wand2, Paperclip, Inbox, MessageSquarePlus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,48 +29,73 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-
-const mockConversations: Conversation[] = [
-  {
-    id: 'conv1',
-    customerName: 'Daniel Lee',
-    startTime: '2023-10-26 10:00 AM',
-    summary: '',
-    transcript: [
-      { speaker: 'Customer', message: 'Hi, I have a question about my recent order.', timestamp: '10:00:15' },
-      { speaker: 'Agent', message: 'Of course, I can help with that. What is your order number?', timestamp: '10:00:30' },
-      { speaker: 'Customer', message: 'It\'s #12345.', timestamp: '10:00:45' },
-      { speaker: 'Agent', message: 'Thank you. I see your order was shipped yesterday. Is there a specific issue?', timestamp: '10:01:10' },
-      { speaker: 'Customer', message: 'Yes, the tracking link isn\'t working.', timestamp: '10:01:25' },
-    ],
-  },
-  {
-    id: 'conv2',
-    customerName: 'Sophie Chen',
-    startTime: '2023-10-26 11:30 AM',
-    summary: '',
-    transcript: [
-      { speaker: 'Customer', message: 'I want to know more about your return policy.', timestamp: '11:30:05' },
-      { speaker: 'Agent', message: 'We offer a 30-day return policy on all items. You can find more details on our website.', timestamp: '11:30:20' },
-    ],
-  },
-];
+import { Input } from '@/components/ui/input';
+import { useTenantProfile } from '@/hooks/use-tenant';
 
 const mockBrochures = [
-    { id: 'brochure1', name: 'Product Catalog 2024.pdf', size: '2.5 MB' },
-    { id: 'brochure2', name: 'Service Tiers & Pricing.pdf', size: '800 KB' },
-    { id: 'brochure3', name: 'Case Study - Acme Inc.pdf', size: '1.2 MB' },
-]
+  { id: 'brochure1', name: 'Product Catalog 2024.pdf', size: '2.5 MB' },
+  { id: 'brochure2', name: 'Service Tiers & Pricing.pdf', size: '800 KB' },
+  { id: 'brochure3', name: 'Case Study - Acme Inc.pdf', size: '1.2 MB' },
+];
+
+type ConversationSummaries = Record<string, string>;
+type ReplyDrafts = Record<string, string>;
+
+type CreateConversationFormState = {
+  source: 'facebook' | 'whatsapp' | 'manual';
+  participantName: string;
+  participantNumber: string;
+  leadId: string;
+  initialMessage: string;
+};
+
+const initialFormState: CreateConversationFormState = {
+  source: 'facebook',
+  participantName: '',
+  participantNumber: '',
+  leadId: '',
+  initialMessage: '',
+};
 
 export default function ChatbotAgentPage() {
   const { toast } = useToast();
+  const { tenantId } = useTenantProfile();
   const [trainingData, setTrainingData] = useState('');
   const [agentInstructions, setAgentInstructions] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
-  const [conversations, setConversations] = useState(mockConversations);
-  const [summarizingId, setSummarizingId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [summaries, setSummaries] = useState<ConversationSummaries>({});
+  const [replyDrafts, setReplyDrafts] = useState<ReplyDrafts>({});
+  const [sendingConversationId, setSendingConversationId] = useState<string | null>(null);
   const [isBrochureDialogOpen, setIsBrochureDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateConversationFormState>(initialFormState);
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+
+  const fetchConversations = useCallback(async () => {
+    if (!tenantId) return;
+    setIsLoadingConversations(true);
+    try {
+      const response = await fetch(`/api/chat/conversations?tenantId=${tenantId}`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to load conversations');
+      }
+      const json = await response.json();
+      setConversations(json.conversations || []);
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: 'Unable to load conversations', description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, [tenantId, toast]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
 
   const handleSuggestData = async () => {
     setIsSuggesting(true);
@@ -79,9 +104,7 @@ export default function ChatbotAgentPage() {
         crmData: 'Leads: 5 new leads today. Contacts: 2 new contacts. Deals: 1 closed-won deal for $5000.',
         customerInquiries: 'Common questions include pricing, shipping times, and return policy.',
       });
-      setTrainingData(
-        (prev) => prev + '\n\n' + result.suggestedTrainingData
-      );
+      setTrainingData((prev) => prev + '\n\n' + result.suggestedTrainingData);
       toast({
         title: 'Suggestions Added',
         description: 'AI-generated training data has been added to the text area.',
@@ -130,181 +153,441 @@ export default function ChatbotAgentPage() {
     }
   };
 
-  const handleSummarize = async (convId: string) => {
-    const conversation = conversations.find(c => c.id === convId);
-    if (!conversation || conversation.summary) return;
+  const handleSummarize = async (conversationId: string) => {
+    const conversation = conversations.find((c) => c.id === conversationId);
+    if (!conversation || summaries[conversationId]) return;
 
-    setSummarizingId(convId);
     try {
-      const conversationText = conversation.transcript.map(t => `${t.speaker}: ${t.message}`).join('\n');
+      const conversationText = conversation.messages
+        .map((message) => `${message.direction === 'outbound' ? 'Agent' : 'Customer'}: ${message.content}`)
+        .join('\n');
       const result = await summarizeConversation({ conversationText });
-      setConversations(convs => convs.map(c => c.id === convId ? { ...c, summary: result.summary } : c));
+      setSummaries((prev) => ({ ...prev, [conversationId]: result.summary }));
     } catch (error) {
       console.error(error);
       toast({ variant: 'destructive', title: 'Summarization Failed' });
+    }
+  };
+
+  const handleSendReply = async (conversationId: string) => {
+    const conversation = conversations.find((c) => c.id === conversationId);
+    if (!conversation || !tenantId) return;
+
+    const draft = replyDrafts[conversationId];
+    if (!draft?.trim()) {
+      toast({ variant: 'destructive', title: 'Reply required', description: 'Write a message before sending.' });
+      return;
+    }
+
+    setSendingConversationId(conversationId);
+    try {
+      const response = await fetch(`/api/chat/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          content: draft,
+          direction: 'outbound',
+          channel: conversation.channel,
+          recipient: conversation.participantNumber,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send message');
+      }
+
+      const json = await response.json();
+      setConversations((prev) =>
+        prev.map((item) =>
+          item.id === conversationId
+            ? {
+                ...item,
+                messages: [...item.messages, json.message],
+                lastMessagePreview: json.message.content,
+                lastMessageAt: json.message.createdAt,
+                updatedAt: json.message.createdAt,
+              }
+            : item,
+        ),
+      );
+      setReplyDrafts((prev) => ({ ...prev, [conversationId]: '' }));
+      toast({ title: 'Message sent', description: 'The message has been delivered to the contact.' });
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to send',
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
-      setSummarizingId(null);
+      setSendingConversationId(null);
+    }
+  };
+
+  const handleReplyDraftChange = (conversationId: string, value: string) => {
+    setReplyDrafts((prev) => ({ ...prev, [conversationId]: value }));
+  };
+
+  const handleCreateConversation = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!tenantId) {
+      toast({ variant: 'destructive', title: 'Tenant not selected' });
+      return;
+    }
+
+    setIsCreatingConversation(true);
+    try {
+      const response = await fetch('/api/chat/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          source: createForm.source,
+          channel: createForm.source === 'facebook' ? 'facebook' : 'whatsapp',
+          participantName: createForm.participantName,
+          participantNumber: createForm.participantNumber,
+          leadId: createForm.leadId || undefined,
+          initialMessage: createForm.initialMessage || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create conversation');
+      }
+
+      const json = await response.json();
+      setConversations((prev) => [json.conversation, ...prev]);
+      setCreateForm(initialFormState);
+      setIsCreateDialogOpen(false);
+      toast({ title: 'Conversation created', description: 'The conversation has been added to your inbox.' });
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: 'Unable to create conversation', description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setIsCreatingConversation(false);
     }
   };
 
   const handleSendBrochure = (brochureName: string) => {
-      toast({
-          title: 'Brochure Sent',
-          description: `${brochureName} has been sent to the customer.`,
-      });
-      setIsBrochureDialogOpen(false);
-  }
-
+    toast({
+      title: 'Brochure Sent',
+      description: `${brochureName} has been sent to the customer.`,
+    });
+    setIsBrochureDialogOpen(false);
+  };
 
   return (
     <>
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <div className="flex items-center">
-        <h1 className="font-semibold text-lg md:text-2xl">Inbox & Agent Training</h1>
-      </div>
-      <Tabs defaultValue="conversations">
-        <TabsList className="grid w-full grid-cols-2 max-w-lg">
-          <TabsTrigger value="conversations"><Inbox className="mr-2 h-4 w-4" />Conversations</TabsTrigger>
-          <TabsTrigger value="train"><BrainCircuit className="mr-2 h-4 w-4" />Train Agent</TabsTrigger>
-        </TabsList>
-        <TabsContent value="train">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle>Train Your Chatbot</CardTitle>
-              <CardDescription>
-                Provide data and instructions to train your AI agent. The more context you provide, the better it will perform.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="training-data">Training Data (FAQs, conversation examples, etc.)</Label>
-                <Textarea
-                  id="training-data"
-                  placeholder="Q: What are your business hours?&#10;A: We are open from 9 AM to 5 PM, Monday to Friday."
-                  className="min-h-48"
-                  value={trainingData}
-                  onChange={(e) => setTrainingData(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent-instructions">Agent Instructions (Personality, tone, etc.)</Label>
-                <Textarea
-                  id="agent-instructions"
-                  placeholder="Be friendly and helpful. Keep responses concise. Your name is WhizlyBot."
-                  className="min-h-24"
-                  value={agentInstructions}
-                  onChange={(e) => setAgentInstructions(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button onClick={handleSuggestData} variant="outline" disabled={isSuggesting}>
-                  {isSuggesting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  Suggest Data with AI
-                </Button>
-                <Button onClick={handleTrainAgent} disabled={isTraining} className="sm:ml-auto">
-                  {isTraining ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="mr-2 h-4 w-4" />
-                  )}
-                  Train Agent
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="conversations">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle>Conversation History</CardTitle>
-              <CardDescription>
-                Review past conversations handled by your agents.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Accordion type="single" collapsible className="w-full">
-                {conversations.map((conv) => (
-                  <AccordionItem value={conv.id} key={conv.id}>
-                    <AccordionTrigger onClick={() => handleSummarize(conv.id)}>
-                      <div className="flex justify-between w-full pr-4">
-                        <span>{conv.customerName}</span>
-                        <span className="text-sm text-muted-foreground">{conv.startTime}</span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-2">
-                      {conv.summary || summarizingId === conv.id ? (
-                        <Card className="mb-4 bg-muted/50 border-dashed">
-                          <CardHeader className="flex-row items-center gap-2 space-y-0 pb-2">
-                            <Sparkles className="h-4 w-4 text-primary"/>
-                            <CardTitle className="text-base">AI Summary</CardTitle>
-                            {summarizingId === conv.id && <Loader2 className="h-4 w-4 animate-spin" />}
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              {conv.summary || "Generating summary..."}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      ) : null}
-
-                      <div className="space-y-4">
-                        {conv.transcript.map((item, index) => (
-                          <div key={index} className={`flex items-start gap-3 ${item.speaker === 'Customer' ? '' : 'justify-end'}`}>
-                            {item.speaker === 'Customer' && <Avatar className="w-8 h-8 border"><AvatarFallback>C</AvatarFallback></Avatar>}
-                            <div className={`p-3 rounded-lg max-w-[75%] ${item.speaker === 'Customer' ? 'bg-muted' : 'bg-primary text-primary-foreground'}`}>
-                              <p className="text-sm">{item.message}</p>
-                              <p className="text-xs opacity-70 mt-1">{item.timestamp}</p>
+      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        <div className="flex items-center justify-between">
+          <h1 className="font-semibold text-lg md:text-2xl">Inbox & Agent Training</h1>
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <MessageSquarePlus className="mr-2 h-4 w-4" />
+            New Conversation
+          </Button>
+        </div>
+        <Tabs defaultValue="conversations">
+          <TabsList className="grid w-full grid-cols-2 max-w-lg">
+            <TabsTrigger value="conversations">
+              <Inbox className="mr-2 h-4 w-4" />Conversations
+            </TabsTrigger>
+            <TabsTrigger value="train">
+              <BrainCircuit className="mr-2 h-4 w-4" />Train Agent
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="conversations">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>Active Conversations</CardTitle>
+                <CardDescription>
+                  Review inbound leads from Facebook and WhatsApp, reply instantly, and keep your bot trained with real examples.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {isLoadingConversations ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading conversations...
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    No conversations yet. Import a Facebook lead or start a WhatsApp chat to see it here.
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {conversations.map((conversation) => (
+                      <Card key={conversation.id} className="border shadow-sm">
+                        <CardHeader className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-9 w-9">
+                                <AvatarFallback>
+                                  {conversation.participantName
+                                    .split(' ')
+                                    .map((word) => word[0])
+                                    .join('')
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <CardTitle className="text-base">{conversation.participantName}</CardTitle>
+                                <CardDescription className="text-xs text-muted-foreground">
+                                  {conversation.channel === 'facebook' ? 'Facebook Lead' : 'WhatsApp'} •{' '}
+                                  {conversation.lastMessageAt
+                                    ? new Date(conversation.lastMessageAt).toLocaleString()
+                                    : 'No replies yet'}
+                                </CardDescription>
+                              </div>
                             </div>
-                            {item.speaker !== 'Customer' && <Avatar className="w-8 h-8 border"><AvatarFallback>A</AvatarFallback></Avatar>}
+                            <Badge variant="outline" className="capitalize">
+                              {conversation.source}
+                            </Badge>
                           </div>
-                        ))}
-                      </div>
-                       <div className="mt-4 pt-4 border-t flex gap-2">
-                          <Textarea placeholder="Type your message..." className="flex-1"/>
-                           <Button onClick={() => setIsBrochureDialogOpen(true)} variant="outline" size="icon">
-                               <Paperclip className="h-4 w-4" />
-                               <span className="sr-only">Send Brochure</span>
-                           </Button>
-                          <Button>Send</Button>
-                       </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="rounded-md border bg-muted/40 p-3 text-xs">
+                            <p className="mb-2 font-medium text-muted-foreground">Transcript</p>
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                              {conversation.messages.length === 0 ? (
+                                <p className="text-muted-foreground">No messages yet.</p>
+                              ) : (
+                                conversation.messages.map((message) => (
+                                  <div key={message.id} className="space-y-0.5">
+                                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                      {message.direction === 'outbound' ? 'Agent' : 'Customer'} •{' '}
+                                      {new Date(message.createdAt).toLocaleString()}
+                                    </p>
+                                    <p className="text-sm leading-snug">{message.content}</p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`reply-${conversation.id}`}>Reply</Label>
+                            <Textarea
+                              id={`reply-${conversation.id}`}
+                              placeholder="Type your response..."
+                              value={replyDrafts[conversation.id] || ''}
+                              onChange={(event) => handleReplyDraftChange(conversation.id, event.target.value)}
+                              className="min-h-[80px]"
+                            />
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsBrochureDialogOpen(true)}>
+                                  <Paperclip className="h-4 w-4" />
+                                </Button>
+                                Attach brochure
+                              </div>
+                              <Button
+                                onClick={() => handleSendReply(conversation.id)}
+                                disabled={sendingConversationId === conversation.id}
+                              >
+                                {sendingConversationId === conversation.id ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
+                                  </>
+                                ) : (
+                                  'Send Reply'
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                          <Separator />
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                Conversation Summary
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSummarize(conversation.id)}
+                                disabled={Boolean(summaries[conversation.id])}
+                              >
+                                <Sparkles className="mr-2 h-3 w-3" />
+                                Summarize
+                              </Button>
+                            </div>
+                            <p className="text-sm leading-snug text-muted-foreground">
+                              {summaries[conversation.id] || 'Use the summarize button to generate a quick briefing for this thread.'}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="train">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>Train Your Chatbot</CardTitle>
+                <CardDescription>
+                  Provide data and instructions to train your AI agent. The more context you provide, the better it will perform.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="training-data">Training Data (FAQs, conversation examples, etc.)</Label>
+                  <Textarea
+                    id="training-data"
+                    placeholder="Q: What are your business hours?\nA: We are open from 9 AM to 5 PM, Monday to Friday."
+                    className="min-h-48"
+                    value={trainingData}
+                    onChange={(e) => setTrainingData(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent-instructions">Agent Instructions (Personality, tone, etc.)</Label>
+                  <Textarea
+                    id="agent-instructions"
+                    placeholder="Be friendly and helpful. Keep responses concise. Your name is WhizlyBot."
+                    className="min-h-24"
+                    value={agentInstructions}
+                    onChange={(e) => setAgentInstructions(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button onClick={handleSuggestData} variant="outline" disabled={isSuggesting}>
+                    {isSuggesting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Suggesting...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        Suggest Training Data
+                      </>
+                    )}
+                  </Button>
+                  <Button onClick={handleTrainAgent} disabled={isTraining}>
+                    {isTraining ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Training...
+                      </>
+                    ) : (
+                      <>
+                        <Bot className="mr-2 h-4 w-4" />
+                        Train Agent
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="conversation-strategy">
+                    <AccordionTrigger>How should I structure my training data?</AccordionTrigger>
+                    <AccordionContent>
+                      Focus on pairing common questions with their best responses and provide several examples of the bot handling
+                      objections. Include important product specs, pricing rules, and compliance statements.
                     </AccordionContent>
                   </AccordionItem>
-                ))}
-              </Accordion>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </main>
+                  <AccordionItem value="tone">
+                    <AccordionTrigger>What tone should the bot use?</AccordionTrigger>
+                    <AccordionContent>
+                      The bot can mirror your brand personality. Use the Agent Instructions field to describe tone, escalation
+                      rules, and how the bot introduces itself.
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
 
-    <Dialog open={isBrochureDialogOpen} onOpenChange={setIsBrochureDialogOpen}>
+      <Dialog open={isBrochureDialogOpen} onOpenChange={setIsBrochureDialogOpen}>
         <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Send a Brochure</DialogTitle>
-                <DialogDescription>
-                    Select a brochure from your resource library to send to the customer.
-                </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 py-4">
-                {mockBrochures.map(b => (
-                    <Card key={b.id} className="p-3 flex justify-between items-center">
-                        <div>
-                            <p className="font-medium">{b.name}</p>
-                            <p className="text-sm text-muted-foreground">{b.size}</p>
-                        </div>
-                        <Button variant="secondary" onClick={() => handleSendBrochure(b.name)}>Send</Button>
-                    </Card>
-                ))}
+          <DialogHeader>
+            <DialogTitle>Select a Brochure</DialogTitle>
+            <DialogDescription>Choose a brochure to send to the customer.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {mockBrochures.map((brochure) => (
+              <Button key={brochure.id} variant="outline" className="w-full justify-between" onClick={() => handleSendBrochure(brochure.name)}>
+                <span>{brochure.name}</span>
+                <span className="text-xs text-muted-foreground">{brochure.size}</span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create a Conversation</DialogTitle>
+            <DialogDescription>Import a Facebook lead or start a WhatsApp chat manually.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleCreateConversation}>
+            <div className="space-y-2">
+              <Label htmlFor="conversation-source">Source</Label>
+              <select
+                id="conversation-source"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                value={createForm.source}
+                onChange={(event) =>
+                  setCreateForm((prev) => ({ ...prev, source: event.target.value as CreateConversationFormState['source'] }))
+                }
+              >
+                <option value="facebook">Facebook Lead</option>
+                <option value="whatsapp">WhatsApp Chat</option>
+                <option value="manual">Manual Entry</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lead-id">Facebook Lead ID (optional)</Label>
+              <Input
+                id="lead-id"
+                value={createForm.leadId}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, leadId: event.target.value }))}
+                placeholder="1234567890"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="participant-name">Contact Name</Label>
+              <Input
+                id="participant-name"
+                value={createForm.participantName}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, participantName: event.target.value }))}
+                placeholder="Jane Doe"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="participant-number">WhatsApp Number</Label>
+              <Input
+                id="participant-number"
+                value={createForm.participantNumber}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, participantNumber: event.target.value }))}
+                placeholder="+1 555 123 4567"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="initial-message">Initial Message</Label>
+              <Textarea
+                id="initial-message"
+                value={createForm.initialMessage}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, initialMessage: event.target.value }))}
+                placeholder="Hi! Thanks for reaching out..."
+              />
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => setIsBrochureDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={isCreatingConversation}>
+                {isCreatingConversation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isCreatingConversation ? 'Creating...' : 'Create Conversation'}
+              </Button>
             </DialogFooter>
+          </form>
         </DialogContent>
-    </Dialog>
+      </Dialog>
     </>
   );
 }

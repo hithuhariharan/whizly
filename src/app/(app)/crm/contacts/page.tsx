@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -30,45 +29,100 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
 import type { Contact } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { collection, orderBy, query, where } from 'firebase/firestore';
+import { useTenantProfile } from '@/hooks/use-tenant';
 
-const mockContacts: Contact[] = [
-  { id: '1', name: 'Olivia Martin', email: 'olivia.martin@email.com', phone: '+1 (555) 123-4567', company: 'Acme Inc.', lastContacted: '2023-10-26' },
-  { id: '2', name: 'Jackson Lee', email: 'jackson.lee@email.com', phone: '+1 (555) 987-6543', company: 'Innovate LLC', lastContacted: '2023-10-25' },
-  { id: '3', name: 'Sophia Hernandez', email: 'sophia.h@email.com', phone: '+1 (555) 234-5678', company: 'Solutions Co.', lastContacted: '2023-10-24' },
-  { id: '4', name: 'Liam Garcia', email: 'liam.g@email.com', phone: '+1 (555) 876-5432', company: 'Tech Gadgets', lastContacted: '2023-10-23' },
-  { id: '5', name: 'Ava Rodriguez', email: 'ava.r@email.com', phone: '+1 (555) 345-6789', company: 'Marketing Pros', lastContacted: '2023-10-22' },
-];
+function formatDate(dateString?: string) {
+  if (!dateString) return '—';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+  return date.toLocaleDateString();
+}
 
 export default function ContactsPage() {
-  const [contacts, setContacts] = useState<Contact[]>(mockContacts);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const { toast } = useToast();
+  const firestore = useFirestore();
+  const { tenantId, user, isTenantLoading } = useTenantProfile();
+
+  const contactsQuery = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return query(
+      collection(firestore, 'crmContacts'),
+      where('tenantId', '==', tenantId),
+      orderBy('lastContacted', 'desc')
+    );
+  }, [firestore, tenantId]);
+
+  const { data: contacts, isLoading: areContactsLoading } = useCollection<Contact>(contactsQuery);
 
   const handleCreateContact = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!firestore || !tenantId || !user) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot create contact',
+        description: 'You must be signed in to create contacts.',
+      });
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
-    const newContact: Contact = {
-      id: (contacts.length + 1).toString(),
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      phone: formData.get('phone') as string,
-      company: formData.get('company') as string,
-      lastContacted: new Date().toISOString().split('T')[0],
-    };
-    setContacts([newContact, ...contacts]);
+    const now = new Date().toISOString();
+
+    const promise = addDocumentNonBlocking(collection(firestore, 'crmContacts'), {
+      name: formData.get('name'),
+      email: formData.get('email'),
+      phone: formData.get('phone'),
+      company: formData.get('company'),
+      lastContacted: now,
+      tenantId,
+      createdBy: user.uid,
+      createdByName: user.displayName || user.email || 'Unknown user',
+    });
+
+    promise?.then((docRef) => {
+      if (!docRef) {
+        toast({
+          variant: 'destructive',
+          title: 'Failed to create contact',
+          description: 'We could not save this contact. Please try again.',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Contact added',
+        description: 'A new contact has been added to your CRM.',
+      });
+    });
+
+    e.currentTarget.reset();
     setIsSheetOpen(false);
   };
 
-  const handleCall = (contactName: string, phone: string) => {
+  const handleCall = (contactName: string, phoneNumber: string) => {
     toast({
       title: `Calling ${contactName}...`,
-      description: `Initiating call to ${phone} via MyOperator.`,
+      description: `Initiating call to ${phoneNumber} via MyOperator.`,
     });
-    // In a real app, this would trigger the MyOperator API
   };
+
+  if (isTenantLoading || areContactsLoading) {
+    return (
+      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        <div className="flex items-center">
+          <h1 className="font-semibold text-lg md:text-2xl">Loading Contacts...</h1>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
@@ -105,26 +159,28 @@ export default function ContactsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contacts.map((contact) => (
+              {contacts?.map((contact) => (
                 <TableRow key={contact.id}>
                   <TableCell className="font-medium">{contact.name}</TableCell>
                   <TableCell>{contact.email}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span>{contact.phone}</span>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleCall(contact.name, contact.phone)}
-                      >
-                        <Phone className="h-4 w-4" />
-                        <span className="sr-only">Call contact</span>
-                      </Button>
+                      <span>{contact.phone || '—'}</span>
+                      {contact.phone && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleCall(contact.name, contact.phone!)}
+                        >
+                          <Phone className="h-4 w-4" />
+                          <span className="sr-only">Call contact</span>
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
-                  <TableCell>{contact.company}</TableCell>
-                  <TableCell>{contact.lastContacted}</TableCell>
+                  <TableCell>{contact.company || '—'}</TableCell>
+                  <TableCell>{formatDate(contact.lastContacted)}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -135,13 +191,20 @@ export default function ContactsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Edit</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
+              {(!contacts || contacts.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    No contacts found yet. Add your first contact to get started.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

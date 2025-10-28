@@ -30,17 +30,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { collection, orderBy, query, where } from 'firebase/firestore';
 
 import type { Lead } from '@/lib/types';
-
-const mockLeads: Lead[] = [
-  { id: '1', name: 'Alice Johnson', email: 'alice@example.com', status: 'New', assignedTo: 'John Doe', createdAt: '2023-10-26' },
-  { id: '2', name: 'Bob Williams', email: 'bob@example.com', status: 'Contacted', assignedTo: 'Jane Smith', createdAt: '2023-10-25' },
-  { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', status: 'Qualified', assignedTo: 'John Doe', createdAt: '2023-10-24' },
-  { id: '4', name: 'Diana Miller', email: 'diana@example.com', status: 'Lost', assignedTo: 'Jane Smith', createdAt: '2023-10-23' },
-  { id: '5', name: 'Ethan Davis', email: 'ethan@example.com', status: 'New', assignedTo: 'John Doe', createdAt: '2023-10-22' },
-];
+import { useTenantProfile } from '@/hooks/use-tenant';
 
 const statusStyles = {
   New: 'default',
@@ -49,24 +44,89 @@ const statusStyles = {
   Lost: 'destructive',
 } as const;
 
+function formatDate(dateString?: string) {
+  if (!dateString) return '—';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+  return date.toLocaleDateString();
+}
+
 export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>(mockLeads);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const { tenantId, user, isTenantLoading } = useTenantProfile();
+
+  const leadsQuery = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return query(
+      collection(firestore, 'crmLeads'),
+      where('tenantId', '==', tenantId),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, tenantId]);
+
+  const { data: leads, isLoading: areLeadsLoading } = useCollection<Lead>(leadsQuery);
 
   const handleCreateLead = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!firestore || !tenantId || !user) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot create lead',
+        description: 'You must be signed in to create leads.',
+      });
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
-    const newLead: Lead = {
-      id: (leads.length + 1).toString(),
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
+
+    const assignedTo = (formData.get('assignedTo') as string)?.trim();
+    const creationDate = new Date().toISOString();
+
+    const promise = addDocumentNonBlocking(collection(firestore, 'crmLeads'), {
+      name: formData.get('name'),
+      email: formData.get('email'),
       status: 'New',
-      assignedTo: 'Unassigned',
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-    setLeads([newLead, ...leads]);
+      assignedTo: assignedTo || user.displayName || user.email || 'Unassigned',
+      createdAt: creationDate,
+      tenantId,
+      createdBy: user.uid,
+      createdByName: user.displayName || user.email || 'Unknown user',
+    });
+
+    promise?.then((docRef) => {
+      if (!docRef) {
+        toast({
+          variant: 'destructive',
+          title: 'Failed to create lead',
+          description: 'We could not save this lead. Please try again.',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Lead created',
+        description: 'A new lead has been added to your CRM.',
+      });
+    });
+
+    e.currentTarget.reset();
     setIsSheetOpen(false);
   };
+
+  if (isTenantLoading || areLeadsLoading) {
+    return (
+      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        <div className="flex items-center">
+          <h1 className="font-semibold text-lg md:text-2xl">Loading Leads...</h1>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
@@ -103,7 +163,7 @@ export default function LeadsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {leads.map((lead) => (
+              {leads?.map((lead) => (
                 <TableRow key={lead.id}>
                   <TableCell className="font-medium">{lead.name}</TableCell>
                   <TableCell>{lead.email}</TableCell>
@@ -111,7 +171,7 @@ export default function LeadsPage() {
                     <Badge variant={statusStyles[lead.status]}>{lead.status}</Badge>
                   </TableCell>
                   <TableCell>{lead.assignedTo}</TableCell>
-                  <TableCell>{lead.createdAt}</TableCell>
+                  <TableCell>{formatDate(lead.createdAt)}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -122,13 +182,20 @@ export default function LeadsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Edit</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
+              {(!leads || leads.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    No leads found yet. Create your first lead to get started.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -159,15 +226,7 @@ export default function LeadsPage() {
               <Label htmlFor="assignedTo" className="text-right">
                 Assign To
               </Label>
-              <Select name="assignedTo">
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select an agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="John Doe">John Doe</SelectItem>
-                  <SelectItem value="Jane Smith">Jane Smith</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input id="assignedTo" name="assignedTo" placeholder="e.g., John Doe" className="col-span-3" />
             </div>
             <SheetFooter>
               <Button type="submit">Save Lead</Button>

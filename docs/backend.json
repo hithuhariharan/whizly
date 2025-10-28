@@ -1,392 +1,393 @@
 {
-  "entities": {
-    "Tenant": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Tenant",
-      "type": "object",
-      "description": "Represents a tenant in the Whizly AI application, isolating user data.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Tenant entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "Name of the tenant."
-        },
-        "ownerId": {
-          "type": "string",
-          "description": "Reference to UserProfile who owns the tenant. (Relationship: UserProfile 1:N Tenant)"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Date and time when the tenant was created.",
-          "format": "date-time"
-        }
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "Whizly AI Backend Model",
+  "description": "Single source of truth for the Whizly AI multi-tenant backend. Defines authentication, entity schemas, and Firestore locations.",
+  "authentication": {
+    "providers": [
+      {
+        "id": "password",
+        "type": "emailPassword",
+        "description": "Username/password authentication handled by Firebase Authentication."
       },
-      "required": [
-        "id",
-        "name",
-        "ownerId",
-        "createdAt"
-      ]
-    },
+      {
+        "id": "google",
+        "type": "oauth",
+        "description": "Google OAuth provider for streamlined tenant onboarding."
+      }
+    ]
+  },
+  "entities": {
     "UserProfile": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "UserProfile",
       "type": "object",
-      "description": "Represents a user profile in the Whizly AI application.",
+      "description": "Represents a Whizly AI user. Stored at /userProfiles/{uid} and mirrors Firebase Authentication claims.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the UserProfile entity."
+          "description": "The Firebase Authentication UID for the user."
         },
         "email": {
           "type": "string",
-          "description": "Email address of the user.",
-          "format": "email"
+          "format": "email",
+          "description": "Primary email used for authentication and notifications."
         },
         "displayName": {
           "type": "string",
-          "description": "Display name of the user."
+          "description": "Human readable name displayed throughout the app."
         },
         "photoURL": {
           "type": "string",
-          "description": "URL of the user's profile photo, if available.",
-          "format": "uri"
+          "format": "uri",
+          "description": "Optional avatar URL."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Admin", "Manager", "Agent"],
+          "default": "Admin",
+          "description": "Top-level role for cross-tenant administration. New users default to Admin until reassigned."
         },
         "tenantIds": {
           "type": "array",
-          "description": "References to Tenants that the user belongs to. (Relationship: UserProfile N:N Tenant)",
+          "description": "List of tenant IDs the user can access.",
           "items": {
             "type": "string"
           }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the profile was first created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the profile was last updated."
         }
       },
-      "required": [
-        "id",
-        "email",
-        "displayName"
-      ]
+      "required": ["id", "email", "displayName", "role", "tenantIds", "createdAt"],
+      "additionalProperties": false
+    },
+    "Tenant": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Tenant",
+      "type": "object",
+      "description": "Represents an organization/workspace within Whizly AI.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the tenant."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name for the organization."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the tenant owner (must exist in UserProfile)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the tenant was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the tenant was last updated."
+        }
+      },
+      "required": ["id", "name", "ownerId", "createdAt"],
+      "additionalProperties": false
     },
     "Lead": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Lead",
       "type": "object",
-      "description": "Represents a lead in the CRM system.",
+      "description": "Potential customer captured through marketing or chat funnels.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the Lead entity."
+          "description": "Unique identifier for the lead record."
         },
         "tenantId": {
           "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N Lead)"
+          "description": "Owning tenant. Used for authorization checks."
         },
-        "name": {
+        "fullName": {
           "type": "string",
-          "description": "Name of the lead."
+          "description": "Full name of the prospect."
         },
         "email": {
           "type": "string",
-          "description": "Email address of the lead.",
-          "format": "email"
+          "format": "email",
+          "description": "Prospect email address."
         },
         "phone": {
           "type": "string",
-          "description": "Phone number of the lead."
+          "description": "Optional phone number captured for follow-ups."
+        },
+        "source": {
+          "type": "string",
+          "description": "Lead acquisition source (e.g., website, WhatsApp, ad campaign)."
         },
         "status": {
           "type": "string",
-          "description": "Status of the lead (e.g., New, Contacted, Qualified)."
+          "enum": ["New", "Contacted", "Qualified", "Converted", "Disqualified"],
+          "description": "Sales pipeline status."
         },
-        "assignedAgentId": {
+        "assignedTo": {
           "type": "string",
-          "description": "Reference to ChatbotAgent assigned to the lead. (Relationship: ChatbotAgent 1:N Lead)"
+          "description": "UID of the user or agent responsible for this lead."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Free-form notes captured during lead qualification."
         },
         "createdAt": {
           "type": "string",
-          "description": "Date and time when the lead was created.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Timestamp when the lead was created."
         },
         "updatedAt": {
           "type": "string",
-          "description": "Date and time when the lead was last updated.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Timestamp when the lead was last updated."
         }
       },
-      "required": [
-        "id",
-        "tenantId",
-        "name",
-        "status",
-        "createdAt"
-      ]
+      "required": ["id", "tenantId", "fullName", "status", "createdAt"],
+      "additionalProperties": false
+    },
+    "Contact": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Contact",
+      "type": "object",
+      "description": "CRM contact that represents a known customer or stakeholder.",
+      "properties": {
+        "id": {"type": "string", "description": "Unique identifier for the contact."},
+        "tenantId": {"type": "string", "description": "Owning tenant ID."},
+        "leadId": {"type": ["string", "null"], "description": "Optional reference back to the originating lead."},
+        "fullName": {"type": "string", "description": "Contact's full name."},
+        "email": {"type": "string", "format": "email", "description": "Primary email address."},
+        "phone": {"type": "string", "description": "Primary phone number."},
+        "company": {"type": "string", "description": "Company or organization the contact belongs to."},
+        "jobTitle": {"type": "string", "description": "Contact's role or title."},
+        "tags": {
+          "type": "array",
+          "description": "Labels to group or segment contacts.",
+          "items": {"type": "string"}
+        },
+        "createdAt": {"type": "string", "format": "date-time", "description": "Creation timestamp."},
+        "updatedAt": {"type": "string", "format": "date-time", "description": "Last modified timestamp."}
+      },
+      "required": ["id", "tenantId", "fullName", "createdAt"],
+      "additionalProperties": false
+    },
+    "Deal": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Deal",
+      "type": "object",
+      "description": "Sales opportunity tied to a contact or account.",
+      "properties": {
+        "id": {"type": "string", "description": "Unique identifier for the deal."},
+        "tenantId": {"type": "string", "description": "Owning tenant."},
+        "contactId": {"type": "string", "description": "Primary contact associated with the deal."},
+        "name": {"type": "string", "description": "Deal name or description."},
+        "stage": {
+          "type": "string",
+          "enum": ["Discovery", "Proposal", "Negotiation", "Won", "Lost"],
+          "description": "Sales pipeline stage."
+        },
+        "amount": {"type": "number", "description": "Potential deal amount in tenant currency."},
+        "currency": {"type": "string", "description": "ISO currency code for the deal amount."},
+        "expectedCloseDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Projected close date."
+        },
+        "ownerId": {"type": "string", "description": "UID of the deal owner."},
+        "notes": {"type": "string", "description": "Internal commentary and updates."},
+        "createdAt": {"type": "string", "format": "date-time", "description": "Creation timestamp."},
+        "updatedAt": {"type": "string", "format": "date-time", "description": "Last modified timestamp."}
+      },
+      "required": ["id", "tenantId", "name", "stage", "amount", "currency", "createdAt"],
+      "additionalProperties": false
     },
     "ChatbotAgent": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "ChatbotAgent",
       "type": "object",
-      "description": "Represents a chatbot agent that can be trained and used to handle conversations.",
+      "description": "Configuration for an AI assistant tailored to a tenant.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the ChatbotAgent entity."
+        "id": {"type": "string", "description": "Unique identifier for the chatbot agent."},
+        "tenantId": {"type": "string", "description": "Owning tenant."},
+        "name": {"type": "string", "description": "Display name shown in the UI."},
+        "description": {"type": "string", "description": "Purpose or persona description."},
+        "instructions": {"type": "string", "description": "System prompt/instructions for the agent."},
+        "knowledgeBase": {
+          "type": "array",
+          "description": "List of document references or URLs used for grounding.",
+          "items": {"type": "string"}
         },
-        "tenantId": {
-          "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N ChatbotAgent)"
+        "channels": {
+          "type": "array",
+          "description": "Enabled communication channels (e.g., website, WhatsApp).",
+          "items": {"type": "string"}
         },
-        "name": {
-          "type": "string",
-          "description": "Name of the chatbot agent."
-        },
-        "description": {
-          "type": "string",
-          "description": "Description of the chatbot agent."
-        },
-        "trainingData": {
-          "type": "string",
-          "description": "The current training data provided for the agent."
-        },
-        "modelName": {
-          "type": "string",
-          "description": "Reference to trained model used for the agent."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Date and time when the agent was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Date and time when the agent was last updated.",
-          "format": "date-time"
-        }
+        "isActive": {"type": "boolean", "description": "Whether the agent is currently active."},
+        "createdAt": {"type": "string", "format": "date-time", "description": "Creation timestamp."},
+        "updatedAt": {"type": "string", "format": "date-time", "description": "Last modified timestamp."}
       },
-      "required": [
-        "id",
-        "tenantId",
-        "name",
-        "createdAt"
-      ]
+      "required": ["id", "tenantId", "name", "instructions", "createdAt"],
+      "additionalProperties": false
     },
     "Conversation": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Conversation",
       "type": "object",
-      "description": "Represents a conversation between a user and a chatbot agent.",
+      "description": "Multi-channel conversation history for a tenant's shared inbox.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Conversation entity."
+        "id": {"type": "string", "description": "Unique identifier for the conversation."},
+        "tenantId": {"type": "string", "description": "Owning tenant."},
+        "agentId": {"type": "string", "description": "ChatbotAgent or human agent currently handling the conversation."},
+        "customer": {
+          "type": "object",
+          "description": "Minimal customer details for quick reference.",
+          "properties": {
+            "name": {"type": "string"},
+            "phone": {"type": "string"},
+            "email": {"type": "string", "format": "email"}
+          },
+          "additionalProperties": false
         },
-        "tenantId": {
+        "channel": {
           "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N Conversation)"
-        },
-        "leadId": {
-          "type": "string",
-          "description": "Reference to Lead associated with the conversation. (Relationship: Lead 1:N Conversation)"
-        },
-        "agentId": {
-          "type": "string",
-          "description": "Reference to ChatbotAgent handling the conversation. (Relationship: ChatbotAgent 1:N Conversation)"
+          "enum": ["Website", "WhatsApp", "Facebook", "Instagram", "Email"],
+          "description": "Conversation source channel."
         },
         "messages": {
           "type": "array",
-          "description": "Array of messages in the conversation.",
+          "description": "Ordered message history for lightweight storage.",
           "items": {
-            "type": "string"
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "sender": {"type": "string", "description": "Origin of the message (customer, agent UID, or system)."},
+              "type": {"type": "string", "enum": ["text", "image", "file"], "description": "Message payload type."},
+              "content": {"type": "string", "description": "Message text or serialized payload reference."},
+              "timestamp": {"type": "string", "format": "date-time"}
+            },
+            "required": ["id", "sender", "type", "content", "timestamp"],
+            "additionalProperties": false
           }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Open", "Pending", "Resolved", "Archived"],
+          "description": "Conversation lifecycle status."
+        },
+        "lastMessageAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp for the latest message."
         },
         "createdAt": {
           "type": "string",
-          "description": "Date and time when the conversation was created.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Conversation creation timestamp."
         },
         "updatedAt": {
           "type": "string",
-          "description": "Date and time when the conversation was last updated.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Timestamp when metadata was last updated."
         }
       },
-      "required": [
-        "id",
-        "tenantId",
-        "leadId",
-        "agentId",
-        "createdAt"
-      ]
+      "required": ["id", "tenantId", "channel", "status", "messages", "createdAt"],
+      "additionalProperties": false
     },
     "WhatsAppIntegration": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "WhatsAppIntegration",
       "type": "object",
-      "description": "Represents the integration with the WhatsApp API.",
+      "description": "Stores WhatsApp Business API credentials and connection state for a tenant.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the WhatsAppIntegration entity."
-        },
-        "tenantId": {
-          "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N WhatsAppIntegration)"
-        },
-        "phoneNumber": {
-          "type": "string",
-          "description": "The phone number associated with the WhatsApp integration."
-        },
-        "apiKey": {
-          "type": "string",
-          "description": "The API key used to connect to the WhatsApp API."
-        },
+        "id": {"type": "string", "description": "Unique identifier for the integration document."},
+        "tenantId": {"type": "string", "description": "Owning tenant."},
+        "businessAccountId": {"type": "string", "description": "Meta WhatsApp Business account ID."},
+        "phoneNumberId": {"type": "string", "description": "WhatsApp phone number ID used for messaging."},
+        "displayPhoneNumber": {"type": "string", "description": "Human readable WhatsApp number."},
+        "accessToken": {"type": "string", "description": "Encrypted access token for Meta Graph API calls."},
+        "webhookSecret": {"type": "string", "description": "Secret used to validate webhook payloads."},
         "status": {
           "type": "string",
-          "description": "The status of the WhatsApp integration (e.g., connected, disconnected)."
+          "enum": ["Disconnected", "PendingVerification", "Connected", "Error"],
+          "description": "Connection lifecycle state."
+        },
+        "lastSyncedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when templates or settings were last synced."
         },
         "createdAt": {
           "type": "string",
-          "description": "Date and time when the integration was created.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Creation timestamp."
         },
         "updatedAt": {
           "type": "string",
-          "description": "Date and time when the integration was last updated.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Last modified timestamp."
         }
       },
-      "required": [
-        "id",
-        "tenantId",
-        "phoneNumber",
-        "apiKey",
-        "status",
-        "createdAt"
-      ]
+      "required": ["id", "tenantId", "status", "createdAt"],
+      "additionalProperties": false
     }
-  },
-  "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
   },
   "firestore": {
     "structure": [
       {
         "path": "/userProfiles/{userProfileId}",
-        "definition": {
-          "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Stores user profile data. The document ID is the Firebase Auth UID.",
-          "params": [
-            {
-              "name": "userProfileId",
-              "description": "The Firebase Auth UID of the user."
-            }
-          ]
-        }
+        "entity": "UserProfile",
+        "description": "Root-level collection storing user metadata. Document IDs mirror Firebase Auth UIDs."
       },
       {
         "path": "/tenants/{tenantId}",
-        "definition": {
-          "entityName": "Tenant",
-          "schema": {
-            "$ref": "#/backend/entities/Tenant"
+        "entity": "Tenant",
+        "description": "Tenant metadata. Parent for all tenant specific subcollections.",
+        "subcollections": [
+          {
+            "path": "leads/{leadId}",
+            "entity": "Lead",
+            "description": "Lead records captured for this tenant."
           },
-          "description": "Stores tenant information. Each tenant is isolated from others.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "The unique ID of the tenant."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/tenants/{tenantId}/leads/{leadId}",
-        "definition": {
-          "entityName": "Lead",
-          "schema": {
-            "$ref": "#/backend/entities/Lead"
+          {
+            "path": "contacts/{contactId}",
+            "entity": "Contact",
+            "description": "CRM contacts owned by the tenant."
           },
-          "description": "Stores lead data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "The unique ID of the tenant."
-            },
-            {
-              "name": "leadId",
-              "description": "The unique ID of the lead."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/tenants/{tenantId}/chatbotAgents/{chatbotAgentId}",
-        "definition": {
-          "entityName": "ChatbotAgent",
-          "schema": {
-            "$ref": "#/backend/entities/ChatbotAgent"
+          {
+            "path": "deals/{dealId}",
+            "entity": "Deal",
+            "description": "Pipeline deals associated with the tenant."
           },
-          "description": "Stores chatbot agent data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "The unique ID of the tenant."
-            },
-            {
-              "name": "chatbotAgentId",
-              "description": "The unique ID of the chatbot agent."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/tenants/{tenantId}/conversations/{conversationId}",
-        "definition": {
-          "entityName": "Conversation",
-          "schema": {
-            "$ref": "#/backend/entities/Conversation"
+          {
+            "path": "chatbotAgents/{chatbotAgentId}",
+            "entity": "ChatbotAgent",
+            "description": "AI agent configurations dedicated to the tenant."
           },
-          "description": "Stores conversation data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "The unique ID of the tenant."
-            },
-            {
-              "name": "conversationId",
-              "description": "The unique ID of the conversation."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/tenants/{tenantId}/whatsAppIntegrations/{whatsAppIntegrationId}",
-        "definition": {
-          "entityName": "WhatsAppIntegration",
-          "schema": {
-            "$ref": "#/backend/entities/WhatsAppIntegration"
+          {
+            "path": "conversations/{conversationId}",
+            "entity": "Conversation",
+            "description": "Conversation histories for the tenant's shared inbox."
           },
-          "description": "Stores WhatsApp integration data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "The unique ID of the tenant."
-            },
-            {
-              "name": "whatsAppIntegrationId",
-              "description": "The unique ID of the WhatsApp integration."
-            }
-          ]
-        }
+          {
+            "path": "whatsAppIntegrations/{integrationId}",
+            "entity": "WhatsAppIntegration",
+            "description": "Tenant-scoped WhatsApp Cloud API integration settings."
+          }
+        ]
       }
     ],
-    "reasoning": "The Firestore structure is designed to ensure data isolation between tenants and enforce strict access control. Each tenant has its own dedicated space, and users can only access data within their assigned tenants. Authorization Independence is achieved by denormalizing tenantId into every document that belongs to a tenant. This eliminates the need for `get()` calls in security rules to verify tenant ownership.  Structural Segregation is implemented by storing different entities (Leads, ChatbotAgents, Conversations, WhatsAppIntegrations) in separate collections under each tenant. This allows for specific security rules tailored to each entity type. The structure is designed to support the required QAPs by enforcing tenant-based access control and preventing unauthorized data access."
+    "notes": "Every tenant-scoped collection denormalizes tenantId for security rule checks. Subcollection paths are relative to /tenants/{tenantId}."
   }
 }

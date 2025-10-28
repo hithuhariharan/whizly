@@ -155,7 +155,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     {item.label}
                   </span>
                   <SidebarMenu>
-                    {item.items.map((subItem) => (
+                    {item.items?.map((subItem) => (
                        <SidebarMenuItem key={subItem.href}>
                          <Link href={subItem.href} passHref>
                            <SidebarMenuButton
