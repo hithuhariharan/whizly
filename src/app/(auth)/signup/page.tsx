@@ -15,11 +15,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { WhizlyLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
-import { useAuth, useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
+import { useAuth, useFirestore, useUser, setDocumentNonBlocking, doc } from '@/firebase';
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { getDoc } from 'firebase/firestore';
 
 
 export default function SignupPage() {
@@ -71,13 +71,18 @@ export default function SignupPage() {
       const user = result.user;
 
       const userDocRef = doc(firestore, "users", user.uid);
-      // Use set with merge to create or update the user document
-      setDocumentNonBlocking(userDocRef, {
-        id: user.uid,
-        email: user.email,
-        role: "Admin", // Default role for initial signup
-        name: user.displayName,
-      }, { merge: true });
+      
+      const docSnap = await getDoc(userDocRef);
+
+      // Create a user profile only if one doesn't exist
+      if (!docSnap.exists()) {
+        setDocumentNonBlocking(userDocRef, {
+          id: user.uid,
+          email: user.email,
+          role: "Admin", // Default role for initial signup
+          name: user.displayName,
+        }, { merge: true });
+      }
       
     } catch (error: any) {
        toast({

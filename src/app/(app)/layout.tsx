@@ -4,11 +4,9 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Bot,
   Contact,
   Inbox,
   LayoutDashboard,
-  Library,
   LogOut,
   MessageSquare,
   Plug,
@@ -16,6 +14,7 @@ import {
   Settings,
   Users,
   Volume2,
+  Library,
   Shield,
 } from 'lucide-react';
 import { WhizlyLogo } from '@/components/icons';
@@ -43,6 +42,7 @@ import {
   SidebarProvider,
   SidebarInset,
   SidebarFooter,
+  SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
 import { useAuth, useUser, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import { signOut } from 'firebase/auth';
@@ -70,10 +70,6 @@ const navItems = [
   },
 ];
 
-const adminNavItems = [
-    { href: '/team', icon: Shield, label: 'Team' },
-];
-
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -82,9 +78,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
 
   const userDocRef = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user || isUserLoading || !firestore) return null;
     return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
+  }, [firestore, user, isUserLoading]);
 
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<{role: string}>(userDocRef);
 
@@ -100,16 +96,38 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (isUserLoading || isProfileLoading) {
+  const showSkeleton = isUserLoading || isProfileLoading;
+
+  if (showSkeleton) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center">
-        <p>Loading...</p>
-      </div>
+      <SidebarProvider>
+      <Sidebar>
+        <SidebarHeader>
+            <div className="flex items-center gap-2">
+                <WhizlyLogo className="h-8 w-8 text-primary" />
+                <span className="text-lg font-semibold text-sidebar-foreground">
+                Whizly AI
+                </span>
+            </div>
+        </SidebarHeader>
+        <SidebarContent>
+            <div className="flex flex-col gap-2 p-2">
+                <SidebarMenuSkeleton showIcon={true}/>
+                <SidebarMenuSkeleton showIcon={true}/>
+                <SidebarMenuSkeleton showIcon={true}/>
+            </div>
+        </SidebarContent>
+      </Sidebar>
+      <SidebarInset>
+        <div className="flex min-h-screen w-full items-center justify-center">
+            <p>Loading...</p>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
     );
   }
   
   if (!user) {
-    // This can happen briefly between isUserLoading being false and the redirect kicking in.
     return null;
   }
 
