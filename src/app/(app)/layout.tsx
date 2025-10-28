@@ -10,6 +10,7 @@ import {
   LogOut,
   MessageSquare,
   Plug,
+  Send,
   Settings,
   Users,
 } from 'lucide-react';
@@ -50,8 +51,14 @@ const navItems = [
       { href: '/crm/deals', icon: MessageSquare, label: 'Deals' },
     ],
   },
-  { href: '/integrations', icon: Plug, label: 'Integrations' },
-  { href: '/chatbot', icon: Bot, label: 'Chatbot Agent' },
+  {
+    label: 'Features',
+    items: [
+      { href: '/integrations', icon: Plug, label: 'Integrations' },
+      { href: '/chatbot', icon: Bot, label: 'Chatbot Agent' },
+      { href: '/broadcasts', icon: Send, label: 'Broadcasts' },
+    ],
+  },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
