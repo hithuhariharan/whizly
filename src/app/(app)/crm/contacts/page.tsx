@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useState } from 'react';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Phone } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -31,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 import type { Contact } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
 
 const mockContacts: Contact[] = [
   { id: '1', name: 'Olivia Martin', email: 'olivia.martin@email.com', phone: '+1 (555) 123-4567', company: 'Acme Inc.', lastContacted: '2023-10-26' },
@@ -43,6 +45,7 @@ const mockContacts: Contact[] = [
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>(mockContacts);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const { toast } = useToast();
 
   const handleCreateContact = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -57,6 +60,14 @@ export default function ContactsPage() {
     };
     setContacts([newContact, ...contacts]);
     setIsSheetOpen(false);
+  };
+
+  const handleCall = (contactName: string, phone: string) => {
+    toast({
+      title: `Calling ${contactName}...`,
+      description: `Initiating call to ${phone} via MyOperator.`,
+    });
+    // In a real app, this would trigger the MyOperator API
   };
 
   return (
@@ -98,7 +109,20 @@ export default function ContactsPage() {
                 <TableRow key={contact.id}>
                   <TableCell className="font-medium">{contact.name}</TableCell>
                   <TableCell>{contact.email}</TableCell>
-                  <TableCell>{contact.phone}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span>{contact.phone}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleCall(contact.name, contact.phone)}
+                      >
+                        <Phone className="h-4 w-4" />
+                        <span className="sr-only">Call contact</span>
+                      </Button>
+                    </div>
+                  </TableCell>
                   <TableCell>{contact.company}</TableCell>
                   <TableCell>{contact.lastContacted}</TableCell>
                   <TableCell>

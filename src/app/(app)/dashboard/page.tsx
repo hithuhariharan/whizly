@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -10,6 +11,8 @@ import {
   Package2,
   Search,
   Users,
+  PlayCircle,
+  PhoneOutgoing,
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -54,6 +57,12 @@ const chartConfig = {
     color: 'hsl(var(--accent))',
   },
 } satisfies ChartConfig;
+
+const mockRecordings = [
+    { id: 'rec1', from: 'John Doe', to: 'Olivia Martin', duration: '5m 32s', date: '2023-10-28 11:45 AM' },
+    { id: 'rec2', from: 'Jane Smith', to: 'Jackson Lee', duration: '2m 10s', date: '2023-10-28 10:30 AM' },
+    { id: 'rec3', from: 'John Doe', to: 'Sophia H.', duration: '12m 3s', date: '2023-10-27 04:15 PM' },
+];
 
 export default function Dashboard() {
   return (
@@ -114,6 +123,43 @@ export default function Dashboard() {
           </Card>
         </div>
         <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
+          <Card className="shadow-sm">
+            <CardHeader className="flex items-center gap-4">
+               <PhoneOutgoing className="h-6 w-6 text-muted-foreground" />
+               <div className="grid gap-1">
+                <CardTitle>Recent Call Recordings</CardTitle>
+                <CardDescription>
+                  Review recent calls made via MyOperator.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Call Details</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {mockRecordings.map(rec => (
+                             <TableRow key={rec.id}>
+                                <TableCell>
+                                    <div className="font-medium">From: {rec.from} to {rec.to}</div>
+                                    <div className="text-sm text-muted-foreground">{rec.date} ({rec.duration})</div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon">
+                                        <PlayCircle className="h-5 w-5" />
+                                        <span className="sr-only">Play</span>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+          </Card>
           <Card className="xl:col-span-2 shadow-sm">
             <CardHeader>
               <CardTitle>Lead Generation</CardTitle>
@@ -139,81 +185,6 @@ export default function Dashboard() {
                   <Bar dataKey="leads" fill="hsl(var(--primary))" radius={8} />
                 </BarChart>
               </ChartContainer>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle>Recent Leads</CardTitle>
-              <CardDescription>
-                Recently acquired leads.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead className="text-right">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">Liam Johnson</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
-                        liam@example.com
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline">New</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">Olivia Smith</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
-                        olivia@example.com
-                      </div>
-                    </TableCell>
-                     <TableCell className="text-right">
-                      <Badge>Contacted</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">Noah Williams</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
-                        noah@example.com
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline">New</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">Emma Brown</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
-                        emma@example.com
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                       <Badge>Qualified</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">Liam Johnson</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
-                        liam@example.com
-                      </div>
-                    </TableCell>
-                     <TableCell className="text-right">
-                      <Badge>Contacted</Badge>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
             </CardContent>
           </Card>
         </div>

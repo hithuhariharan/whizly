@@ -14,13 +14,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Phone } from 'lucide-react';
 import { MetaIcon, RazorpayIcon } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
-type IntegrationName = 'whatsapp' | 'razorpay' | 'metapixel';
+type IntegrationName = 'whatsapp' | 'razorpay' | 'metapixel' | 'myoperator';
 
 type Integration = {
   id: IntegrationName;
@@ -49,6 +49,12 @@ const integrationDetails: Integration[] = [
     name: 'Meta Pixel',
     description: 'Track website visitor activity and optimize your ad campaigns with Meta Pixel.',
     icon: <MetaIcon className="h-10 w-10 text-blue-600" />,
+  },
+  {
+    id: 'myoperator',
+    name: 'MyOperator',
+    description: 'Enable click-to-call from your CRM and sync call recordings automatically.',
+    icon: <Phone className="h-10 w-10 text-sky-500" />,
   },
 ];
 
@@ -107,6 +113,22 @@ export default function IntegrationsPage() {
             </div>
              <DialogFooter>
                 <Button type="submit">Connect Meta Pixel</Button>
+            </DialogFooter>
+          </form>
+        );
+       case 'myoperator':
+        return (
+          <form onSubmit={handleConnect} className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="api-key">API Key</Label>
+              <Input id="api-key" placeholder="Your MyOperator API Key" required />
+            </div>
+             <div className="space-y-2">
+              <Label htmlFor="api-secret">API Secret</Label>
+              <Input id="api-secret" type="password" placeholder="Your MyOperator API Secret" required />
+            </div>
+             <DialogFooter>
+                <Button type="submit">Connect MyOperator</Button>
             </DialogFooter>
           </form>
         );
