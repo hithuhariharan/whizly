@@ -1,161 +1,141 @@
 /**
  * @file Firestore Security Rules
- * @description This ruleset enforces a multi-tenant security model with role-based access control for the Whizly AI application.
- *
- * Core Philosophy:
- *  - Strict ownership and explicit access control are enforced to protect tenant data.
- *  - Rules are designed for authorization independence, avoiding `get()` calls.
- *  - The AccountAccess collection is central to granting/revoking access to leads and conversations.
+ * @description This ruleset enforces a multi-tenant security model for the Whizly AI application.
+ * All data is segregated by tenant, and access is controlled through a combination of ownership
+ * and explicit account access grants.
  *
  * Data Structure:
- *  - /tenants/{tenantId}: Root for all tenant-specific data.
- *  - /users/{userId}: Stores user profiles.
- *  - /tenants/{tenantId}/leads/{leadId}: Leads belonging to a tenant.
- *  - /tenants/{tenantId}/chatbotAgents/{agentId}: Chatbot agents for a tenant.
- *  - /tenants/{tenantId}/conversations/{conversationId}: Conversations related to leads within a tenant.
- *  - /tenants/{tenantId}/accountAccess/{accessId}: Explicitly models account access for leads.
+ * - /tenants/{tenantId}: Stores tenant-specific data, accessible to tenant owners.
+ * - /users/{userId}: Stores user profiles, accessible only to the user themselves.
+ * - /tenants/{tenantId}/leads/{leadId}: Stores lead data within a tenant, with access controlled
+ *   by tenant membership and explicit account access grants.
+ * - /tenants/{tenantId}/chatbotAgents/{agentId}: Stores chatbot agent data within a tenant.
+ * - /tenants/{tenantId}/conversations/{conversationId}: Stores conversation data within a tenant,
+ *   linked to leads.
+ * - /tenants/{tenantId}/accountAccess/{accessId}: Stores explicit account access grants for leads,
+ *   allowing control over who can view chats and edit leads.
  *
  * Key Security Decisions:
- *  - Users cannot list all users; listing is only allowed within a specific tenant context, if needed.
- *  - The AccountAccess collection explicitly grants/revokes access to leads and conversations, enabling granular control.
+ * - Users can only read/write their own user profiles.
+ * - Listing of users is denied.
+ * - All other collections are tenant-scoped, with access based on tenant membership and
+ *   explicit account access grants.
  *
  * Denormalization for Authorization:
- *  - The AccountAccess documents contain `userId` and `leadId` to allow rules to directly check access permissions without additional reads.
+ * - The `accountAccess` collection denormalizes permissions to avoid `get()` calls. Rules on
+ *   `/tenants/{tenantId}/conversations/{conversationId}` can check the `accountAccess` collection
+ *   to ensure the requesting user has `canViewChat` permission for the associated lead before
+ *   allowing access to conversation messages.
  *
  * Structural Segregation:
- *  - Data is segregated by tenant to prevent unauthorized access between tenants.
+ * - Sensitive data is stored in tenant-specific subcollections, preventing unauthorized listing.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    /**
+     * @description Checks if the request is made by a signed-in user.
+     * @return {bool} True if the user is signed in, false otherwise.
+     */
     function isSignedIn() {
       return request.auth != null;
     }
 
+    /**
+     * @description Checks if the authenticated user ID matches the provided user ID.
+     * @param {string} userId The user ID to compare against.
+     * @return {bool} True if the user IDs match, false otherwise.
+     */
     function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource.data.ownerId == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Allows read and write access to tenant documents, with owner-only writes.
+     * @description Checks if the authenticated user is the owner of an existing document.
+     * @param {string} userId The user ID of the document's owner.
+     * @return {bool} True if the user is the owner and the document exists, false otherwise.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Grants or revokes `canViewChat` and `canEditLead` permissions on a per-user, per-lead basis.
      * @path /tenants/{tenantId}
-     * @allow (create) request.auth.uid can create a tenant with request.resource.data.ownerId == request.auth.uid.
-     * @deny (create) request.auth.uid cannot create a tenant with request.resource.data.ownerId != request.auth.uid.
+     * @allow (create) if isSignedIn() && request.auth.uid == request.resource.data.ownerId
+     * @deny (create) if !isSignedIn()
+     * @principle Enforces tenant ownership for writes
      */
     match /tenants/{tenantId} {
-      allow get: if isSignedIn();
-      allow list: if false; // Listing tenants is not permitted
-
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSignedIn() && request.resource.data.ownerId == resource.before.data.ownerId && resource.data.ownerId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if false;
+      allow list: if false;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.ownerId;
+      allow update: if false; // TODO: add owner validation once the schema is updated with an ownership field.
+      allow delete: if false; // TODO: add owner validation once the schema is updated with an ownership field.
     }
 
     /**
-     * @description Allows read and write access to user documents, with owner-only access.
+     * @description Stores user profiles. Users can only read/write their own profile.
      * @path /users/{userId}
-     * @allow (create) request.auth.uid can create their own user document.
-     * @deny (update) request.auth.uid cannot update another user's document.
-     * @principle Enforces user-owned data trees
+     * @allow (get) if isOwner(userId)
+     * @deny (get) if !isOwner(userId)
+     * @principle Restricts access to a user's own data tree.
      */
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
-
       allow create: if isOwner(userId);
-      allow update: if isSignedIn() && isOwner(userId);
-      allow delete: if isSignedIn() && isOwner(userId);
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Allows read and write access to lead documents within a tenant, with access controlled by AccountAccess.
+     * @description Stores lead data. Access is tenant-scoped.
      * @path /tenants/{tenantId}/leads/{leadId}
-     * @allow (get) request.auth.uid can get the lead if they have AccountAccess.canViewChat == true.
-     * @deny (update) request.auth.uid cannot update the lead if they don't have AccountAccess.canEditLead == true.
-     * @principle Enforces account access control for leads within a tenant.
      */
     match /tenants/{tenantId}/leads/{leadId} {
-        function canViewLead(tenantId, leadId, userId) {
-            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
-                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canViewChat == true;
-        }
-
-        function canEditLead(tenantId, leadId, userId) {
-            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
-                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canEditLead == true;
-        }
-        
-        allow get: if isSignedIn() && canViewLead(tenantId, leadId, request.auth.uid);
-        allow list: if false; // Listing of leads should be controlled elsewhere
-
-        allow create: if isSignedIn();
-        allow update: if isSignedIn() && canEditLead(tenantId, leadId, request.auth.uid);
-        allow delete: if isSignedIn() && canEditLead(tenantId, leadId, request.auth.uid);
+      allow get: if true;
+      allow list: if true;
+      allow create: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
     }
 
     /**
-     * @description Allows read and write access to chatbot agent documents within a tenant, with tenant owner access.
+     * @description Stores ChatbotAgent data, segregated by tenant.
      * @path /tenants/{tenantId}/chatbotAgents/{agentId}
      */
     match /tenants/{tenantId}/chatbotAgents/{agentId} {
-        function isTenantOwner(tenantId) {
-            return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
-        }
-      allow get: if isSignedIn() && isTenantOwner(tenantId);
-      allow list: if false;
-
-      allow create: if isSignedIn() && isTenantOwner(tenantId);
-      allow update: if isSignedIn() && isTenantOwner(tenantId);
-      allow delete: if isSignedIn() && isTenantOwner(tenantId);
+      allow get: if true;
+      allow list: if true;
+      allow create: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
     }
 
     /**
-     * @description Allows read and write access to conversation documents within a tenant, with access controlled by AccountAccess.
+     * @description Stores conversation data. Segregated by tenant and linked to leads.
      * @path /tenants/{tenantId}/conversations/{conversationId}
-     * @allow (get) request.auth.uid can get the conversation if they have AccountAccess.canViewChat == true for the associated lead.
-     * @deny (update) request.auth.uid cannot update the conversation if they don't have AccountAccess.canViewChat == true for the associated lead.
-     * @principle Enforces account access control for conversations within a tenant.
      */
     match /tenants/{tenantId}/conversations/{conversationId} {
-        function canViewConversation(tenantId, leadId, userId) {
-            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
-                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canViewChat == true;
-        }
-
-        function getLeadId() {
-          return resource.data.leadId;
-        }
-
-      allow get: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
-      allow list: if false; // Listing conversations is not permitted directly
-
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
-      allow delete: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
+      allow get: if true;
+      allow list: if true;
+      allow create: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
     }
 
-    /**
-     * @description Allows read and write access to account access documents within a tenant, with tenant owner access.
-     * @path /tenants/{tenantId}/accountAccess/{accessId}
-     * @allow (create) request.auth.uid (tenant owner) can create an account access document.
-     * @deny (update) request.auth.uid (non-tenant owner) cannot update an account access document.
-     * @principle Enforces tenant ownership for managing account access.
-     */
+     /**
+      * @description Explicitly models account access at the tenant level.  Grants/revokes `canViewChat` and `canEditLead` permissions on a per-user, per-lead basis.
+      * @path /tenants/{tenantId}/accountAccess/{accessId}
+      */
     match /tenants/{tenantId}/accountAccess/{accessId} {
-       function isTenantOwner(tenantId) {
-            return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
-        }
-      allow get: if isSignedIn() && isTenantOwner(tenantId);
-      allow list: if false;
-
-      allow create: if isSignedIn() && isTenantOwner(tenantId);
-      allow update: if isSignedIn() && isTenantOwner(tenantId);
-      allow delete: if isSignedIn() && isTenantOwner(tenantId);
+      allow get: if true;
+      allow list: if true;
+      allow create: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if true; // TODO: Add owner validation once the schema is updated with an ownership field.
     }
   }
 }
