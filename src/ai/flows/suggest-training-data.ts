@@ -9,7 +9,7 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 const SuggestTrainingDataInputSchema = z.object({
   crmData: z.string().describe('Existing CRM data including leads, contacts, and deals.'),

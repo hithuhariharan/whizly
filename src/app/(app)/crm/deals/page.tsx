@@ -33,14 +33,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import type { Deal } from '@/lib/types';
-
-const mockDeals: Deal[] = [
-  { id: '1', name: 'Website Redesign', contact: 'Olivia Martin', stage: 'Proposal', value: 5000, closeDate: '2023-11-30' },
-  { id: '2', name: 'Mobile App Development', contact: 'Jackson Lee', stage: 'Negotiation', value: 25000, closeDate: '2023-12-15' },
-  { id: '3', name: 'SEO Optimization', contact: 'Sophia Hernandez', stage: 'Closed-Won', value: 2000, closeDate: '2023-10-20' },
-  { id: '4', name: 'E-commerce Platform', contact: 'Liam Garcia', stage: 'Prospecting', value: 15000, closeDate: '2024-01-10' },
-  { id: '5', name: 'Social Media Campaign', contact: 'Ava Rodriguez', stage: 'Closed-Lost', value: 3000, closeDate: '2023-10-15' },
-];
+import { useToast } from '@/hooks/use-toast';
+import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { collection, orderBy, query, where } from 'firebase/firestore';
+import { useTenantProfile } from '@/hooks/use-tenant';
 
 const stageStyles = {
   Prospecting: 'default',
@@ -50,24 +46,85 @@ const stageStyles = {
   'Closed-Lost': 'destructive',
 } as const;
 
+const currencyFormatter = new Intl.NumberFormat(undefined, {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
 export default function DealsPage() {
-  const [deals, setDeals] = useState<Deal[]>(mockDeals);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const { tenantId, user, isTenantLoading } = useTenantProfile();
+
+  const dealsQuery = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return query(
+      collection(firestore, 'crmDeals'),
+      where('tenantId', '==', tenantId),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, tenantId]);
+
+  const { data: deals, isLoading: areDealsLoading } = useCollection<Deal>(dealsQuery);
 
   const handleCreateDeal = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!firestore || !tenantId || !user) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot create deal',
+        description: 'You must be signed in to create deals.',
+      });
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
-    const newDeal: Deal = {
-      id: (deals.length + 1).toString(),
-      name: formData.get('name') as string,
-      contact: formData.get('contact') as string,
-      stage: 'Prospecting',
-      value: Number(formData.get('value')),
-      closeDate: formData.get('closeDate') as string,
-    };
-    setDeals([newDeal, ...deals]);
+    const now = new Date().toISOString();
+
+    const promise = addDocumentNonBlocking(collection(firestore, 'crmDeals'), {
+      name: formData.get('name'),
+      contact: formData.get('contact'),
+      stage: formData.get('stage') || 'Prospecting',
+      value: Number(formData.get('value')) || 0,
+      closeDate: formData.get('closeDate') || null,
+      createdAt: now,
+      tenantId,
+      createdBy: user.uid,
+      createdByName: user.displayName || user.email || 'Unknown user',
+    });
+
+    promise?.then((docRef) => {
+      if (!docRef) {
+        toast({
+          variant: 'destructive',
+          title: 'Failed to create deal',
+          description: 'We could not save this deal. Please try again.',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Deal created',
+        description: 'A new deal has been added to your pipeline.',
+      });
+    });
+
+    e.currentTarget.reset();
     setIsSheetOpen(false);
   };
+
+  if (isTenantLoading || areDealsLoading) {
+    return (
+      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        <div className="flex items-center">
+          <h1 className="font-semibold text-lg md:text-2xl">Loading Deals...</h1>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
@@ -104,15 +161,15 @@ export default function DealsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deals.map((deal) => (
+              {deals?.map((deal) => (
                 <TableRow key={deal.id}>
                   <TableCell className="font-medium">{deal.name}</TableCell>
                   <TableCell>{deal.contact}</TableCell>
                   <TableCell>
                     <Badge variant={stageStyles[deal.stage]}>{deal.stage}</Badge>
                   </TableCell>
-                  <TableCell>${deal.value.toLocaleString()}</TableCell>
-                  <TableCell>{deal.closeDate}</TableCell>
+                  <TableCell>{currencyFormatter.format(deal.value)}</TableCell>
+                  <TableCell>{deal.closeDate || '—'}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -123,13 +180,20 @@ export default function DealsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Edit</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
+              {(!deals || deals.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    No deals found yet. Add your first opportunity to get started.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -156,11 +220,28 @@ export default function DealsPage() {
               </Label>
               <Input id="contact" name="contact" className="col-span-3" required />
             </div>
-             <div className="grid grid-cols-4 items-center gap-4">
+            <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="value" className="text-right">
                 Value ($)
               </Label>
               <Input id="value" name="value" type="number" className="col-span-3" required />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="stage" className="text-right">
+                Stage
+              </Label>
+              <Select name="stage" defaultValue="Prospecting">
+                <SelectTrigger id="stage" className="col-span-3">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Prospecting">Prospecting</SelectItem>
+                  <SelectItem value="Proposal">Proposal</SelectItem>
+                  <SelectItem value="Negotiation">Negotiation</SelectItem>
+                  <SelectItem value="Closed-Won">Closed-Won</SelectItem>
+                  <SelectItem value="Closed-Lost">Closed-Lost</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="closeDate" className="text-right">

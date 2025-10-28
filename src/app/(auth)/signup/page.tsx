@@ -35,11 +35,12 @@ export default function SignupPage() {
     }
   }, [user, isUserLoading, router]);
   
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const name = (e.currentTarget as HTMLFormElement).name.value;
-    const email = (e.currentTarget as HTMLFormElement).email.value;
-    const password = (e.currentTarget as HTMLFormElement).password.value;
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get('name') as string;
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
     
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);

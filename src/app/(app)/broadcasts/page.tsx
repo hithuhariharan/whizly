@@ -117,7 +117,7 @@ export default function BroadcastsPage() {
               readOnly
             />
             <p className="text-xs text-muted-foreground">
-              Variables like `{{1}}` will be replaced with customer data. This is just a preview.
+              Variables like {'{{1}}'} will be replaced with customer data. This is just a preview.
             </p>
           </div>
           <Button onClick={handleSendBroadcast} disabled={isSending} className="w-full sm:w-auto" size="lg">

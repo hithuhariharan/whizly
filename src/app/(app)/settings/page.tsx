@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { useAuth } from '@/firebase';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useTenantProfile } from '@/hooks/use-tenant';
 
 const profileFormSchema = z.object({
   displayName: z.string().min(2, {
@@ -49,7 +50,7 @@ type CompanyProfileFormValues = z.infer<typeof companyProfileSchema>;
 
 
 export default function SettingsPage() {
-  const { user, isUserLoading } = useUser();
+  const { user, isTenantLoading, tenantId } = useTenantProfile();
   const auth = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
@@ -66,14 +67,27 @@ export default function SettingsPage() {
     resolver: zodResolver(companyProfileSchema),
   });
 
+  const companyProfileDocRef = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return doc(firestore, 'companyProfiles', tenantId);
+  }, [firestore, tenantId]);
+
+  const { data: companyProfileData } = useDoc<CompanyProfileFormValues>(companyProfileDocRef);
+
   useEffect(() => {
-    if(user) {
-        profileForm.reset({
-            displayName: user.displayName || '',
-            email: user.email || '',
-        })
+    if (user) {
+      profileForm.reset({
+        displayName: user.displayName || '',
+        email: user.email || '',
+      });
     }
   }, [user, profileForm]);
+
+  useEffect(() => {
+    if (companyProfileData) {
+      companyForm.reset(companyProfileData);
+    }
+  }, [companyProfileData, companyForm]);
 
 
   async function onProfileSubmit(data: ProfileFormValues) {
@@ -98,14 +112,23 @@ export default function SettingsPage() {
   }
 
   function onCompanyProfileSubmit(data: CompanyProfileFormValues) {
+    if (!companyProfileDocRef) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to save company profile',
+        description: 'Please try again after refreshing the page.',
+      });
+      return;
+    }
+
+    setDocumentNonBlocking(companyProfileDocRef, data, { merge: true });
     toast({
-        title: "Company Profile Saved",
-        description: "Your company details have been updated.",
-    })
-    console.log(data);
+      title: "Company Profile Saved",
+      description: "Your company details have been updated.",
+    });
   }
 
-  if (isUserLoading) {
+  if (isTenantLoading) {
       return (
           <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
               <h1 className="font-semibold text-lg md:text-2xl">Loading Settings...</h1>
