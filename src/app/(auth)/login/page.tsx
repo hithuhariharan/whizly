@@ -35,14 +35,12 @@ export default function LoginPage() {
     getRedirectResult(auth)
       .then((result) => {
         if (result) {
-          // This is the signed-in user
-          const user = result.user;
-          // You can access the Google Access Token if you need it.
-          // const credential = GoogleAuthProvider.credentialFromResult(result);
-          // const token = credential.accessToken;
+          // This is the signed-in user.
+          // The useUser hook will handle the redirect to dashboard.
         }
       }).catch((error) => {
-        if (error.code !== 'auth/cancelled-popup-request') {
+        // Handle Errors here.
+        if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
            toast({
               variant: "destructive",
               title: "Google Sign-In Failed",

@@ -42,6 +42,7 @@ export default function SignupPage() {
             const user = result.user;
             const userDocRef = doc(firestore, "users", user.uid);
             
+            // Check if the user document already exists before creating it.
             getDoc(userDocRef).then(docSnap => {
                  if (!docSnap.exists()) {
                     setDocumentNonBlocking(userDocRef, {
@@ -55,7 +56,7 @@ export default function SignupPage() {
         }
       }).catch((error) => {
         // Handle Errors here.
-        if (error.code !== 'auth/cancelled-popup-request') {
+        if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
            toast({
             variant: "destructive",
             title: "Google Sign-In Failed",
@@ -78,6 +79,7 @@ export default function SignupPage() {
       await updateProfile(user, { displayName: name });
 
       const userDocRef = doc(firestore, "users", user.uid);
+      // Use setDocumentNonBlocking to avoid blocking UI and handle errors gracefully
       setDocumentNonBlocking(userDocRef, {
         id: user.uid,
         email: user.email,
