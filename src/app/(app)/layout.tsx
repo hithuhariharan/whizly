@@ -163,25 +163,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               )
             )}
              {userProfile?.role === 'Admin' && (
-                <SidebarMenuItem className="relative">
-                    <span className="px-2 text-xs font-medium uppercase text-sidebar-foreground/70">
-                        Admin
-                    </span>
-                    <SidebarMenu>
-                        {adminNavItems.map((item) => (
-                            <SidebarMenuItem key={item.href}>
-                                <Link href={item.href} passHref>
-                                    <SidebarMenuButton
-                                        isActive={pathname === item.href}
-                                        tooltip={item.label}
-                                    >
-                                        <item.icon />
-                                        <span>{item.label}</span>
-                                    </SidebarMenuButton>
-                                </Link>
-                            </SidebarMenuItem>
-                        ))}
-                    </SidebarMenu>
+                <SidebarMenuItem>
+                    <Link href="/team" passHref>
+                        <SidebarMenuButton
+                            isActive={pathname === '/team'}
+                            tooltip="Team"
+                        >
+                            <Shield />
+                            <span>Team</span>
+                        </SidebarMenuButton>
+                    </Link>
                 </SidebarMenuItem>
             )}
           </SidebarMenu>
