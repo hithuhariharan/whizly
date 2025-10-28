@@ -16,6 +16,7 @@ import {
   Settings,
   Users,
   Volume2,
+  Shield,
 } from 'lucide-react';
 import { WhizlyLogo } from '@/components/icons';
 import {
@@ -43,8 +44,9 @@ import {
   SidebarInset,
   SidebarFooter,
 } from '@/components/ui/sidebar';
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useUser, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import { signOut } from 'firebase/auth';
+import { doc } from 'firebase/firestore';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -68,11 +70,23 @@ const navItems = [
   },
 ];
 
+const adminNavItems = [
+    { href: '/team', icon: Shield, label: 'Team' },
+];
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const auth = useAuth();
+  const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+
+  const userDocRef = useMemoFirebase(() => {
+    if (!user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+
+  const { data: userProfile } = useDoc<{role: string}>(userDocRef);
 
   React.useEffect(() => {
     if (!isUserLoading && !user) {
@@ -81,7 +95,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, isUserLoading, router]);
 
   const handleLogout = () => {
-    signOut(auth);
+    if (auth) {
+      signOut(auth);
+    }
   };
 
   if (isUserLoading || !user) {
@@ -113,23 +129,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </span>
                   <SidebarMenu>
                     {item.items.map((subItem) => (
-                      <SidebarMenuItem key={subItem.href}>
-                        <Link href={subItem.href} passHref>
-                          <SidebarMenuButton
-                            isActive={pathname === subItem.href}
-                            tooltip={subItem.label}
-                          >
-                            <subItem.icon />
-                            <span>{subItem.label}</span>
-                          </SidebarMenuButton>
-                        </Link>
-                      </SidebarMenuItem>
+                       <SidebarMenuItem key={subItem.href}>
+                         <Link href={subItem.href} passHref>
+                           <SidebarMenuButton
+                             isActive={pathname === subItem.href}
+                             tooltip={subItem.label}
+                           >
+                             <subItem.icon />
+                             <span>{subItem.label}</span>
+                           </SidebarMenuButton>
+                         </Link>
+                       </SidebarMenuItem>
                     ))}
                   </SidebarMenu>
                 </SidebarMenuItem>
               ) : (
                 <SidebarMenuItem key={item.href}>
-                  <Link href={item.href} passHref>
+                   <Link href={item.href} passHref>
                     <SidebarMenuButton
                       isActive={pathname === item.href}
                       tooltip={item.label}
@@ -140,6 +156,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </Link>
                 </SidebarMenuItem>
               )
+            )}
+             {userProfile?.role === 'Admin' && (
+                <SidebarMenuItem className="relative">
+                    <span className="px-2 text-xs font-medium uppercase text-sidebar-foreground/70">
+                        Admin
+                    </span>
+                    <SidebarMenu>
+                        {adminNavItems.map((item) => (
+                            <SidebarMenuItem key={item.href}>
+                                <Link href={item.href} passHref>
+                                    <SidebarMenuButton
+                                        isActive={pathname === item.href}
+                                        tooltip={item.label}
+                                    >
+                                        <item.icon />
+                                        <span>{item.label}</span>
+                                    </SidebarMenuButton>
+                                </Link>
+                            </SidebarMenuItem>
+                        ))}
+                    </SidebarMenu>
+                </SidebarMenuItem>
             )}
           </SidebarMenu>
         </SidebarContent>
@@ -160,10 +198,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <DropdownMenuContent side="right" align="start" className="w-56">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
+              <Link href="/settings">
+                 <DropdownMenuItem>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+              </Link>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
