@@ -30,6 +30,14 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // This is a temporary workaround for the development environment.
+  // In a production environment, this would not be needed.
+  // We can remove this once the Next.js version is upgraded.
+  experimental: {
+    allowedDevOrigins: [
+      'https://*.cloudworkstations.dev',
+    ],
+  },
 };
 
 export default nextConfig;
