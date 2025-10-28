@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { WhizlyLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
 import { useAuth, useUser } from '@/firebase';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -30,6 +30,28 @@ export default function LoginPage() {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          // This is the signed-in user
+          const user = result.user;
+          // You can access the Google Access Token if you need it.
+          // const credential = GoogleAuthProvider.credentialFromResult(result);
+          // const token = credential.accessToken;
+        }
+      }).catch((error) => {
+        if (error.code !== 'auth/cancelled-popup-request') {
+           toast({
+              variant: "destructive",
+              title: "Google Sign-In Failed",
+              description: error.message,
+            });
+        }
+      });
+  }, [auth, toast]);
+
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,14 +69,7 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = () => {
     const provider = new GoogleAuthProvider();
-    signInWithPopup(auth, provider)
-      .catch((error) => {
-        toast({
-          variant: "destructive",
-          title: "Google Sign-In Failed",
-          description: error.message,
-        });
-      });
+    signInWithRedirect(auth, provider);
   };
 
   if (isUserLoading || (!isUserLoading && user)) {
