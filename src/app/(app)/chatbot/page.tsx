@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, BrainCircuit, Loader2, Sparkles, Wand2 } from 'lucide-react';
+import { Bot, BrainCircuit, Loader2, Sparkles, Wand2, Paperclip } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +21,14 @@ import { summarizeConversation } from '@/ai/flows/summarize-conversation';
 import type { Conversation } from '@/lib/types';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 const mockConversations: Conversation[] = [
   {
@@ -48,6 +56,12 @@ const mockConversations: Conversation[] = [
   },
 ];
 
+const mockBrochures = [
+    { id: 'brochure1', name: 'Product Catalog 2024.pdf', size: '2.5 MB' },
+    { id: 'brochure2', name: 'Service Tiers & Pricing.pdf', size: '800 KB' },
+    { id: 'brochure3', name: 'Case Study - Acme Inc.pdf', size: '1.2 MB' },
+]
+
 export default function ChatbotAgentPage() {
   const { toast } = useToast();
   const [trainingData, setTrainingData] = useState('');
@@ -56,6 +70,7 @@ export default function ChatbotAgentPage() {
   const [isTraining, setIsTraining] = useState(false);
   const [conversations, setConversations] = useState(mockConversations);
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
+  const [isBrochureDialogOpen, setIsBrochureDialogOpen] = useState(false);
 
   const handleSuggestData = async () => {
     setIsSuggesting(true);
@@ -132,8 +147,17 @@ export default function ChatbotAgentPage() {
     }
   };
 
+  const handleSendBrochure = (brochureName: string) => {
+      toast({
+          title: 'Brochure Sent',
+          description: `${brochureName} has been sent to the customer.`,
+      });
+      setIsBrochureDialogOpen(false);
+  }
+
 
   return (
+    <>
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="flex items-center">
         <h1 className="font-semibold text-lg md:text-2xl">Chatbot Agent</h1>
@@ -239,6 +263,14 @@ export default function ChatbotAgentPage() {
                           </div>
                         ))}
                       </div>
+                       <div className="mt-4 pt-4 border-t flex gap-2">
+                          <Textarea placeholder="Type your message..." className="flex-1"/>
+                           <Button onClick={() => setIsBrochureDialogOpen(true)} variant="outline" size="icon">
+                               <Paperclip className="h-4 w-4" />
+                               <span className="sr-only">Send Brochure</span>
+                           </Button>
+                          <Button>Send</Button>
+                       </div>
                     </AccordionContent>
                   </AccordionItem>
                 ))}
@@ -248,5 +280,31 @@ export default function ChatbotAgentPage() {
         </TabsContent>
       </Tabs>
     </main>
+
+    <Dialog open={isBrochureDialogOpen} onOpenChange={setIsBrochureDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Send a Brochure</DialogTitle>
+                <DialogDescription>
+                    Select a brochure from your resource library to send to the customer.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 py-4">
+                {mockBrochures.map(b => (
+                    <Card key={b.id} className="p-3 flex justify-between items-center">
+                        <div>
+                            <p className="font-medium">{b.name}</p>
+                            <p className="text-sm text-muted-foreground">{b.size}</p>
+                        </div>
+                        <Button variant="secondary" onClick={() => handleSendBrochure(b.name)}>Send</Button>
+                    </Card>
+                ))}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsBrochureDialogOpen(false)}>Cancel</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -7,6 +7,7 @@ import {
   Bot,
   Contact,
   LayoutDashboard,
+  Library,
   LogOut,
   MessageSquare,
   Plug,
@@ -59,6 +60,7 @@ const navItems = [
       { href: '/chatbot', icon: Bot, label: 'Chatbot Agent' },
       { href: '/broadcasts', icon: Send, label: 'Broadcasts' },
       { href: '/campaigns', icon: Volume2, label: 'Campaigns' },
+      { href: '/resources', icon: Library, label: 'Resource Library' },
     ],
   },
 ];
