@@ -86,7 +86,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
 
-  const { data: userProfile } = useDoc<{role: string}>(userDocRef);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<{role: string}>(userDocRef);
 
   React.useEffect(() => {
     if (!isUserLoading && !user) {
@@ -100,12 +100,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (isUserLoading || !user) {
+  if (isUserLoading || isProfileLoading) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center">
         <p>Loading...</p>
       </div>
     );
+  }
+  
+  if (!user) {
+    // This can happen briefly between isUserLoading being false and the redirect kicking in.
+    return null;
   }
 
   return (
@@ -198,7 +203,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <DropdownMenuContent side="right" align="start" className="w-56">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <Link href="/settings">
+              <Link href="/settings" passHref>
                  <DropdownMenuItem>
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>

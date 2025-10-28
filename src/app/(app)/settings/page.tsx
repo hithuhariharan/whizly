@@ -8,11 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useEffect } from 'react';
+import { updateProfile } from 'firebase/auth';
+import { useAuth } from '@/firebase';
 
 const profileFormSchema = z.object({
   name: z.string().min(2, {
@@ -26,6 +28,7 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
 export default function SettingsPage() {
   const { user, isUserLoading } = useUser();
+  const auth = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -34,33 +37,43 @@ export default function SettingsPage() {
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
 
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<ProfileFormValues>(userDocRef);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<{ name: string; email: string }>(userDocRef);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-        name: '',
-        email: ''
+        name: user?.displayName || '',
+        email: user?.email || ''
     }
   });
 
   useEffect(() => {
     if(userProfile) {
         form.reset({
-            name: userProfile.name || '',
-            email: userProfile.email || '',
+            name: userProfile.name || user?.displayName || '',
+            email: userProfile.email || user?.email || '',
         })
     }
-  }, [userProfile, form])
+  }, [userProfile, user, form]);
 
 
-  function onSubmit(data: ProfileFormValues) {
-    if (!userDocRef) return;
-    setDocumentNonBlocking(userDocRef, data, { merge: true });
-    toast({
-      title: "Profile Updated",
-      description: "Your settings have been saved.",
-    })
+  async function onSubmit(data: ProfileFormValues) {
+    if (!userDocRef || !auth.currentUser) return;
+    
+    try {
+        await updateProfile(auth.currentUser, { displayName: data.name });
+        setDocumentNonBlocking(userDocRef, { name: data.name }, { merge: true });
+        toast({
+          title: "Profile Updated",
+          description: "Your settings have been saved.",
+        })
+    } catch(error: any) {
+         toast({
+            variant: "destructive",
+            title: "Error updating profile",
+            description: error.message,
+        })
+    }
   }
 
   if (isUserLoading || isProfileLoading) {
@@ -102,6 +115,7 @@ export default function SettingsPage() {
                         <FormControl>
                           <Input placeholder="Your name" {...field} />
                         </FormControl>
+                        <FormDescription>This is your public display name.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -119,7 +133,7 @@ export default function SettingsPage() {
                       </FormItem>
                     )}
                   />
-                  <Button type="submit">Save Changes</Button>
+                  <Button type="submit" disabled={form.formState.isSubmitting}>Save Changes</Button>
                 </form>
               </Form>
             </CardContent>

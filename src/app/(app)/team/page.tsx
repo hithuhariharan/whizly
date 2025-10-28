@@ -33,13 +33,13 @@ export default function TeamPage() {
     if (!user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
-  const { data: currentUserProfile } = useDoc<{ role: string }>(userDocRef);
+  const { data: currentUserProfile, isLoading: isProfileLoading } = useDoc<{ role: string }>(userDocRef);
 
   const usersCollectionRef = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
   const { data: users, isLoading: areUsersLoading } = useCollection<UserProfile>(usersCollectionRef);
 
   useEffect(() => {
-    if (!isUserLoading && currentUserProfile && currentUserProfile.role !== 'Admin') {
+    if (!isUserLoading && !isProfileLoading && currentUserProfile && currentUserProfile.role !== 'Admin') {
       toast({
         variant: 'destructive',
         title: 'Access Denied',
@@ -47,9 +47,17 @@ export default function TeamPage() {
       });
       router.push('/dashboard');
     }
-  }, [isUserLoading, currentUserProfile, router, toast]);
+  }, [isUserLoading, isProfileLoading, currentUserProfile, router, toast]);
   
   const handleRoleChange = (userId: string, newRole: UserProfile['role']) => {
+    if(user?.uid === userId) {
+        toast({
+            variant: "destructive",
+            title: "Action Forbidden",
+            description: "You cannot change your own role.",
+        });
+        return;
+    }
     const userToUpdateRef = doc(firestore, 'users', userId);
     updateDocumentNonBlocking(userToUpdateRef, { role: newRole });
     toast({
@@ -58,7 +66,7 @@ export default function TeamPage() {
     });
   };
 
-  if (isUserLoading || areUsersLoading || !currentUserProfile || currentUserProfile.role !== 'Admin') {
+  if (isUserLoading || areUsersLoading || isProfileLoading) {
     return (
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
         <div className="flex items-center">
@@ -66,6 +74,21 @@ export default function TeamPage() {
         </div>
       </main>
     );
+  }
+
+  if (currentUserProfile?.role !== 'Admin') {
+      return (
+          <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+            <Card>
+              <CardHeader>
+                <CardTitle>Access Denied</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p>You do not have the necessary permissions to view this page. Please contact an administrator.</p>
+              </CardContent>
+            </Card>
+          </main>
+      )
   }
 
   return (
@@ -91,13 +114,13 @@ export default function TeamPage() {
             <TableBody>
               {users?.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.name}</TableCell>
+                  <TableCell className="font-medium">{u.name || 'No Name'}</TableCell>
                   <TableCell>{u.email}</TableCell>
                   <TableCell>{u.role}</TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" disabled={user?.uid === u.id}>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
