@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, BrainCircuit, Loader2, Sparkles, Wand2, Paperclip } from 'lucide-react';
+import { Bot, BrainCircuit, Loader2, Sparkles, Wand2, Paperclip, Inbox } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,6 +13,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { suggestTrainingData } from '@/ai/flows/suggest-training-data';
@@ -20,7 +21,6 @@ import { trainChatbotAgent } from '@/ai/flows/train-chatbot-agent';
 import { summarizeConversation } from '@/ai/flows/summarize-conversation';
 import type { Conversation } from '@/lib/types';
 import { Separator } from '@/components/ui/separator';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -160,12 +160,12 @@ export default function ChatbotAgentPage() {
     <>
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="flex items-center">
-        <h1 className="font-semibold text-lg md:text-2xl">Chatbot Agent</h1>
+        <h1 className="font-semibold text-lg md:text-2xl">Inbox & Agent Training</h1>
       </div>
-      <Tabs defaultValue="train">
+      <Tabs defaultValue="conversations">
         <TabsList className="grid w-full grid-cols-2 max-w-lg">
+          <TabsTrigger value="conversations"><Inbox className="mr-2 h-4 w-4" />Conversations</TabsTrigger>
           <TabsTrigger value="train"><BrainCircuit className="mr-2 h-4 w-4" />Train Agent</TabsTrigger>
-          <TabsTrigger value="conversations"><Bot className="mr-2 h-4 w-4" />Conversations</TabsTrigger>
         </TabsList>
         <TabsContent value="train">
           <Card className="shadow-sm">

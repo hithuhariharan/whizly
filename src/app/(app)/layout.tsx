@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Bot,
   Contact,
+  Inbox,
   LayoutDashboard,
   Library,
   LogOut,
@@ -57,7 +58,7 @@ const navItems = [
     label: 'Features',
     items: [
       { href: '/integrations', icon: Plug, label: 'Integrations' },
-      { href: '/chatbot', icon: Bot, label: 'Chatbot Agent' },
+      { href: '/chatbot', icon: Inbox, label: 'Inbox' },
       { href: '/broadcasts', icon: Send, label: 'Broadcasts' },
       { href: '/campaigns', icon: Volume2, label: 'Campaigns' },
       { href: '/resources', icon: Library, label: 'Resource Library' },
