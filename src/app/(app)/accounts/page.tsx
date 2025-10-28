@@ -5,6 +5,7 @@ import { DollarSign, IndianRupee, Users, FileWarning } from 'lucide-react';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -138,4 +139,3 @@ export default function AccountsPage() {
     </main>
   );
 }
-
