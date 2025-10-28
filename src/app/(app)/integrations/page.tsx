@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageSquare } from 'lucide-react';
@@ -10,6 +11,7 @@ const integrations = [
     description: 'Connect your WhatsApp Business API to manage customer conversations directly.',
     icon: <MessageSquare className="h-10 w-10 text-green-500" />,
     connected: true,
+    manageUrl: '/integrations/whatsapp',
   },
   {
     name: 'Razorpay',
@@ -48,8 +50,8 @@ export default function IntegrationsPage() {
             </CardHeader>
             <CardContent>
               {integration.connected ? (
-                <Button variant="outline" className="w-full">
-                  Manage
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={integration.manageUrl || '#'}>Manage</Link>
                 </Button>
               ) : (
                 <Button className="w-full">
