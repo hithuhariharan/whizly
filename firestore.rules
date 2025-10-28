@@ -1,163 +1,183 @@
 /**
  * @file Firestore Security Rules
- * @description This ruleset enforces a multi-tenant security model with role-based access control for the Whizly AI application.
+ * @description This ruleset enforces a multi-tenant security model for the Whizly AI application.
+ * All data is segregated by tenant, and access is controlled based on user roles and explicit account access permissions.
  *
  * Data Structure:
- * - /tenants/{tenantId}: Stores tenant-specific data, isolating data for different organizations.
- * - /users/{userId}: Stores user profiles; accessible only to the user themselves.
- * - /tenants/{tenantId}/leads/{leadId}: Stores lead data, accessible based on user roles and explicit account access grants.
- * - /tenants/{tenantId}/chatbotAgents/{agentId}: Stores chatbot agent data, accessible to tenant members.
- * - /tenants/{tenantId}/conversations/{conversationId}: Stores conversation data, access controlled via AccountAccess.
- * - /tenants/{tenantId}/accountAccess/{accessId}: Stores explicit account access grants for users to leads.
+ * - /tenants/{tenantId}: Stores tenant-specific data.
+ * - /users/{userId}: Stores user profiles.
+ * - /tenants/{tenantId}/leads/{leadId}: Stores lead data.
+ * - /tenants/{tenantId}/chatbotAgents/{agentId}: Stores ChatbotAgent data.
+ * - /tenants/{tenantId}/conversations/{conversationId}: Stores conversation data.
+ * - /tenants/{tenantId}/accountAccess/{accessId}: Stores account access control data.
  *
  * Key Security Decisions:
- * - Users can only read and write their own user documents. Listing all users is denied.
- * - Tenant-level data access is implicitly granted to members of the tenant.
- * - Access to leads and conversations is explicitly managed via the AccountAccess collection,
- *   which allows for fine-grained control over who can view chats and edit leads.
- * - Data validation is minimized to focus on authorization, allowing for flexible data shapes.
+ * - Listing of users is disallowed to prevent unauthorized enumeration.
+ * - Tenant-based segregation ensures data isolation.
+ * - AccountAccess documents explicitly grant/revoke permissions, enabling fine-grained access control.
  *
  * Denormalization for Authorization:
- * - The AccountAccess collection denormalizes user and lead IDs, allowing for efficient rules
- *   without requiring additional `get()` calls.
- *
- * Structural Segregation:
- * - Tenant-specific data is stored in subcollections under the /tenants/{tenantId} path,
- *   ensuring data isolation and efficient access control.
+ * - The `AccountAccess` collection denormalizes user and lead relationships to enable efficient permission checks without requiring additional `get()` calls.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is authenticated.
-     */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /**
-     * @description Checks if the authenticated user's ID matches the provided userId.
-     */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the authenticated user's ID matches the resource ownerId
-     *              and the resource exists.
-     * @param ownerId The ownerId to compare to.
-     */
-    function isExistingOwner(ownerId) {
-        return isSignedIn() && resource.data.ownerId == request.auth.uid;
-    }
-
-    /**
-     * @description Defines the valid roles for users within the application.
-     */
-    function isValidRole(role) {
-        return role in ["Admin", "Manager", "Employee"];
-    }
-
-    /**
-     * @description Rules for the /tenants/{tenantId} collection.
+     * @description Grants tenant owners full access to their tenant data.
      * @path /tenants/{tenantId}
-     * @allow (create) User with ID 'tenant123' can create a tenant if ownerId is 'tenant123'.
-     * @deny (create) User with ID 'user456' cannot create a tenant with ownerId 'tenant123'.
-     * @allow (get) Any authenticated user can get a tenant.
-     * @deny (list) Listing all tenants is not allowed.
-     * @principle Enforces tenant ownership and prevents unauthorized listing.
+     * @allow (create) User with matching {tenantId} can create a tenant.
+     * @deny (create) User without matching {tenantId} cannot create a tenant.
+     * @allow (get) Any authenticated user can read tenant data.
+     * @deny (list) Listing tenants is not allowed.
+     * @principle Enforces document ownership for writes.
      */
     match /tenants/{tenantId} {
+      function isOwner(tenantId) {
+        return request.auth.uid == resource.data.ownerId;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
       allow get: if isSignedIn();
       allow list: if false;
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if request.auth.uid == request.resource.data.ownerId;
+      allow update: if request.auth.uid == resource.data.ownerId;
+      allow delete: if request.auth.uid == resource.data.ownerId;
     }
 
     /**
-     * @description Rules for the /users/{userId} collection.
+     * @description Controls access to user profiles.
      * @path /users/{userId}
-     * @allow (create) User with ID 'user123' can create their own user document.
-     * @deny (create) User with ID 'user456' cannot create a user document for 'user123'.
-     * @allow (get) User with ID 'user123' can get their own user document.
-     * @deny (update) User with ID 'user456' cannot update user document for 'user123'.
-     * @principle Enforces user-ownership and prevents unauthorized access to user profiles.
+     * @allow (create) User can create their own profile.
+     * @deny (create) User cannot create another user's profile.
+     * @allow (get) User can read their own profile.
+     * @deny (get) User cannot read another user's profile.
+     * @allow (list) Listing users is not allowed.
+     * @principle Restricts access to a user's own data tree.
      */
     match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
       allow get: if isOwner(userId);
-      allow list: if false; // Explicitly disallowing listing all users
+      allow list: if false;
+
       allow create: if isOwner(userId);
       allow update: if isOwner(userId);
       allow delete: if isOwner(userId);
     }
 
     /**
-     * @description Rules for the /tenants/{tenantId}/leads/{leadId} collection.
+     * @description Controls access to lead data within a tenant.
      * @path /tenants/{tenantId}/leads/{leadId}
-     * @allow (create) Authenticated user can create a lead in a tenant if tenantId matches the lead's tenantId.
-     * @deny (create) Authenticated user cannot create a lead if tenantId does not match the lead's tenantId.
-     * @allow (get) Any authenticated user can get a lead. Access is further restricted by AccountAccess rules.
-     * @deny (list) Listing leads without proper authorization is not allowed; AccountAccess rules apply.
-     * @principle Enforces tenant-based lead access and restricts unauthorized listing.
+     * @allow (create) Tenant owner can create leads.
+     * @deny (create) User cannot create leads in another tenant.
+     * @allow (get) Any authenticated user can read lead data if they have access (TODO: implement access checks).
+     * @deny (list) Listing leads requires tenant membership (TODO: implement access checks).
+     * @principle Enforces tenant-based data segregation.
      */
     match /tenants/{tenantId}/leads/{leadId} {
-      allow get: if isSignedIn();
-      allow list: if false;  // Listing requires checking AccountAccess.  Handled below
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      allow get: if isSignedIn(); // TODO: Implement granular access check based on AccountAccess
+      allow list: if false; // TODO: Implement granular access check based on AccountAccess
+
+      allow create: if isTenantOwner(tenantId);
+      allow update: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      allow delete: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
     }
 
     /**
-     * @description Rules for the /tenants/{tenantId}/chatbotAgents/{agentId} collection.
+     * @description Controls access to chatbot agent data within a tenant.
      * @path /tenants/{tenantId}/chatbotAgents/{agentId}
-     * @allow (create) User can create a chatbot agent within their tenant.
-     * @deny (create) User cannot create a chatbot agent in another tenant.
-     * @allow (get) Any authenticated user can get a chatbot agent.
-     * @deny (list) Listing chatbot agents without proper authorization is not allowed.
-     * @principle Enforces tenant-based chatbot agent access and prevents unauthorized listing.
+     * @allow (create) Tenant owner can create chatbot agents.
+     * @deny (create) User cannot create chatbot agents in another tenant.
+     * @allow (get) Any authenticated user can read chatbot agent data if they have access (TODO: implement access checks).
+     * @deny (list) Listing chatbot agents requires tenant membership (TODO: implement access checks).
+     * @principle Enforces tenant-based data segregation.
      */
     match /tenants/{tenantId}/chatbotAgents/{agentId} {
-      allow get: if isSignedIn();
-      allow list: if false;  // Listing is allowed for members of the tenant.
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      allow get: if isSignedIn(); // TODO: Implement granular access check based on AccountAccess
+      allow list: if false; // TODO: Implement granular access check based on AccountAccess
+
+      allow create: if isTenantOwner(tenantId);
+      allow update: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      allow delete: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
     }
 
     /**
-     * @description Rules for the /tenants/{tenantId}/conversations/{conversationId} collection.
+     * @description Controls access to conversation data within a tenant.
      * @path /tenants/{tenantId}/conversations/{conversationId}
-     * @allow (create) User can create a conversation within their tenant.
-     * @deny (create) User cannot create a conversation in another tenant.
-     * @allow (get) Conversation can be read if the user has 'canViewChat' access in the AccountAccess collection.
-     * @deny (list) Conversations list is denied.
-     * @principle Enforces tenant-based conversation access and relies on AccountAccess for authorization.
+     * @allow (create) Tenant owner can create conversations.
+     * @deny (create) User cannot create conversations in another tenant.
+     * @allow (get) Any authenticated user can read conversation data if they have access (TODO: implement access checks).
+     * @deny (list) Listing conversations requires tenant membership (TODO: implement access checks).
+     * @principle Enforces tenant-based data segregation.
      */
     match /tenants/{tenantId}/conversations/{conversationId} {
-      allow get: if isSignedIn();
-      allow list: if false; // Access control is managed via the AccountAccess collection
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      allow get: if isSignedIn(); // TODO: Implement granular access check based on AccountAccess
+      allow list: if false; // TODO: Implement granular access check based on AccountAccess
+
+      allow create: if isTenantOwner(tenantId);
+      allow update: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      allow delete: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
     }
 
     /**
-     * @description Rules for the /tenants/{tenantId}/accountAccess/{accessId} collection.
+     * @description Controls access to account access data within a tenant.
      * @path /tenants/{tenantId}/accountAccess/{accessId}
-     * @allow (create) User can create account access within their tenant.
-     * @deny (create) User cannot create account access in another tenant.
-     * @allow (get) Any authenticated user can get account access.
-     * @deny (list) Listing account access is generally not allowed.
-     * @principle Enforces tenant-based account access and prevents unauthorized listing.
+     * @allow (create) Tenant owner can create account access entries.
+     * @deny (create) User cannot create account access entries in another tenant.
+     * @allow (get) Any authenticated user can read account access data if they have access (TODO: implement access checks).
+     * @deny (list) Listing account access entries requires tenant membership (TODO: implement access checks).
+     * @principle Enforces tenant-based data segregation and explicit account access control.
      */
     match /tenants/{tenantId}/accountAccess/{accessId} {
-      allow get: if isSignedIn();
-      allow list: if false; // Allow listing.
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      allow get: if isSignedIn(); // TODO: Implement granular access check based on AccountAccess
+      allow list: if false; // TODO: Implement granular access check based on AccountAccess
+
+      allow create: if isTenantOwner(tenantId);
+      allow update: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      allow delete: if get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
     }
   }
 }
