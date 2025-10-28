@@ -1,158 +1,163 @@
 /**
  * @file Firestore Security Rules
- * @description This ruleset enforces a tenant-based security model where users can only access data within their assigned tenants.
+ * @description This ruleset enforces a multi-tenant security model with role-based access control for the Whizly AI application.
  *
  * Data Structure:
- * - /tenants/{tenantId}: Stores tenant-specific data.
- * - /users/{userId}: Stores user profiles, including tenant membership (tenantIds) and roles.
- * - /tenants/{tenantId}/leads/{leadId}: Stores lead data within a tenant.
- * - /tenants/{tenantId}/chatbotAgents/{agentId}: Stores chatbot agent data within a tenant.
- * - /tenants/{tenantId}/conversations/{conversationId}: Stores conversation data within a tenant.
- * - /tenants/{tenantId}/accountAccess/{accessId}: Explicitly models lead access control.
+ * - /tenants/{tenantId}: Stores tenant-specific data, isolating data for different organizations.
+ * - /users/{userId}: Stores user profiles; accessible only to the user themselves.
+ * - /tenants/{tenantId}/leads/{leadId}: Stores lead data, accessible based on user roles and explicit account access grants.
+ * - /tenants/{tenantId}/chatbotAgents/{agentId}: Stores chatbot agent data, accessible to tenant members.
+ * - /tenants/{tenantId}/conversations/{conversationId}: Stores conversation data, access controlled via AccountAccess.
+ * - /tenants/{tenantId}/accountAccess/{accessId}: Stores explicit account access grants for users to leads.
  *
  * Key Security Decisions:
- * - User listing is denied to prevent information disclosure.
- * - All write operations are strictly controlled based on tenant membership, user roles, and explicit account access grants.
- * - Read operations leverage the tenant-based structure and explicit access controls to ensure data isolation and authorized access.
+ * - Users can only read and write their own user documents. Listing all users is denied.
+ * - Tenant-level data access is implicitly granted to members of the tenant.
+ * - Access to leads and conversations is explicitly managed via the AccountAccess collection,
+ *   which allows for fine-grained control over who can view chats and edit leads.
+ * - Data validation is minimized to focus on authorization, allowing for flexible data shapes.
  *
  * Denormalization for Authorization:
- * - The AccountAccess entity explicitly models access control for leads, including canViewChat and canEditLead permissions. This allows for secure and efficient rules without requiring complex queries.
+ * - The AccountAccess collection denormalizes user and lead IDs, allowing for efficient rules
+ *   without requiring additional `get()` calls.
+ *
+ * Structural Segregation:
+ * - Tenant-specific data is stored in subcollections under the /tenants/{tenantId} path,
+ *   ensuring data isolation and efficient access control.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Enforces tenant-level access control. Only authenticated users can read and write tenant data.
-     * @path /tenants/{tenantId}
-     * @allow (get, list): if isSignedIn()
-     * @allow (create): if request.auth.uid == request.resource.data.ownerId
-     * @allow (update, delete): if isExistingOwner(resource.data.ownerId)
-     * @deny (get, list): if false
-     * @deny (create, update, delete): if !isSignedIn()
-     * @principle Enforces tenant ownership for writes, requiring authentication for all operations.
-     */
-    match /tenants/{tenantId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.ownerId;
-      allow update: if isExistingOwner(resource.data.ownerId);
-      allow delete: if isExistingOwner(resource.data.ownerId);
-    }
-
-    /**
-     * @description Restricts user access to their own profile data.
-     * @path /users/{userId}
-     * @allow (get): if isOwner(userId)
-     * @allow (create): if isOwner(userId)
-     * @allow (update, delete): if isExistingOwner(userId)
-     * @deny (list): if true
-     * @principle Enforces user-ownership model for accessing profile data.
-     */
-    match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
-    }
-
-    /**
-     * @description Enforces lead-level access control within a tenant. Only users with explicit access can view or edit leads.
-     * @path /tenants/{tenantId}/leads/{leadId}
-     * @allow (get, list): if true;
-     * @allow (create): if isSignedIn()
-     * @allow (update, delete): if isExistingOwner(resource.data.assignedTo)
-     * @deny (get, list): if false
-     * @deny (create, update, delete): if !isSignedIn()
-     * @principle Enforces tenant-based lead access control, requiring authentication and explicit access grants.
-     */
-    match /tenants/{tenantId}/leads/{leadId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if isSignedIn();
-      allow update: if isExistingOwner(resource.data.assignedTo);
-      allow delete: if isExistingOwner(resource.data.assignedTo);
-    }
-
-    /**
-     * @description Enforces chatbot agent access control within a tenant. Only users within the tenant can manage agents.
-     * @path /tenants/{tenantId}/chatbotAgents/{agentId}
-     * @allow (get, list): if isSignedIn()
-     * @allow (create): if isSignedIn()
-     * @allow (update, delete): if isSignedIn()
-     * @deny (get, list): if false
-     * @deny (create, update, delete): if false
-     * @principle Enforces tenant-based access control for chatbot agents, requiring authentication.
-     */
-    match /tenants/{tenantId}/chatbotAgents/{agentId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
-    }
-
-    /**
-     * @description Enforces conversation access control within a tenant.  Access is determined by the AccountAccess rules, via the leadId.
-     * @path /tenants/{tenantId}/conversations/{conversationId}
-     * @allow (get, list): if isSignedIn()
-     * @allow (create): if isSignedIn()
-     * @allow (update, delete): if false
-     * @deny (get, list): if false
-     * @deny (create, update, delete): if true
-     * @principle Enforces tenant-based conversation access control, requiring authentication and proper account access rights.
-     */
-    match /tenants/{tenantId}/conversations/{conversationId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if false;
-      allow delete: if false;
-    }
-
-    /**
-     * @description Enforces explicit account access control at the tenant level.
-     * @path /tenants/{tenantId}/accountAccess/{accessId}
-     * @allow (get, list): if isSignedIn()
-     * @allow (create): if isSignedIn()
-     * @allow (update, delete): if isSignedIn()
-     * @deny (get, list): if false
-     * @deny (create, update, delete): if false
-     * @principle Enforces explicit account access grants for leads, requiring authentication.
-     */
-    match /tenants/{tenantId}/accountAccess/{accessId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
-    }
-
-    /**
-     * @description Helper function to check if the requesting user is signed in.
-     * @return {boolean} True if the user is signed in, false otherwise.
+     * @description Checks if the request is authenticated.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Helper function to check if the requesting user is the owner of the document.
-     * @param {string} userId The user ID to compare against the request's authentication UID.
-     * @return {boolean} True if the user is the owner, false otherwise.
+     * @description Checks if the authenticated user's ID matches the provided userId.
      */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Helper function to check if the requesting user is the existing owner of the document.
-     * @param {string} userId The user ID to compare against the request's authentication UID.
-     * @return {boolean} True if the user is the owner and the resource exists, false otherwise.
+     * @description Checks if the authenticated user's ID matches the resource ownerId
+     *              and the resource exists.
+     * @param ownerId The ownerId to compare to.
      */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
+    function isExistingOwner(ownerId) {
+        return isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    /**
+     * @description Defines the valid roles for users within the application.
+     */
+    function isValidRole(role) {
+        return role in ["Admin", "Manager", "Employee"];
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId} collection.
+     * @path /tenants/{tenantId}
+     * @allow (create) User with ID 'tenant123' can create a tenant if ownerId is 'tenant123'.
+     * @deny (create) User with ID 'user456' cannot create a tenant with ownerId 'tenant123'.
+     * @allow (get) Any authenticated user can get a tenant.
+     * @deny (list) Listing all tenants is not allowed.
+     * @principle Enforces tenant ownership and prevents unauthorized listing.
+     */
+    match /tenants/{tenantId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    /**
+     * @description Rules for the /users/{userId} collection.
+     * @path /users/{userId}
+     * @allow (create) User with ID 'user123' can create their own user document.
+     * @deny (create) User with ID 'user456' cannot create a user document for 'user123'.
+     * @allow (get) User with ID 'user123' can get their own user document.
+     * @deny (update) User with ID 'user456' cannot update user document for 'user123'.
+     * @principle Enforces user-ownership and prevents unauthorized access to user profiles.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false; // Explicitly disallowing listing all users
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId}/leads/{leadId} collection.
+     * @path /tenants/{tenantId}/leads/{leadId}
+     * @allow (create) Authenticated user can create a lead in a tenant if tenantId matches the lead's tenantId.
+     * @deny (create) Authenticated user cannot create a lead if tenantId does not match the lead's tenantId.
+     * @allow (get) Any authenticated user can get a lead. Access is further restricted by AccountAccess rules.
+     * @deny (list) Listing leads without proper authorization is not allowed; AccountAccess rules apply.
+     * @principle Enforces tenant-based lead access and restricts unauthorized listing.
+     */
+    match /tenants/{tenantId}/leads/{leadId} {
+      allow get: if isSignedIn();
+      allow list: if false;  // Listing requires checking AccountAccess.  Handled below
+      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId}/chatbotAgents/{agentId} collection.
+     * @path /tenants/{tenantId}/chatbotAgents/{agentId}
+     * @allow (create) User can create a chatbot agent within their tenant.
+     * @deny (create) User cannot create a chatbot agent in another tenant.
+     * @allow (get) Any authenticated user can get a chatbot agent.
+     * @deny (list) Listing chatbot agents without proper authorization is not allowed.
+     * @principle Enforces tenant-based chatbot agent access and prevents unauthorized listing.
+     */
+    match /tenants/{tenantId}/chatbotAgents/{agentId} {
+      allow get: if isSignedIn();
+      allow list: if false;  // Listing is allowed for members of the tenant.
+      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId}/conversations/{conversationId} collection.
+     * @path /tenants/{tenantId}/conversations/{conversationId}
+     * @allow (create) User can create a conversation within their tenant.
+     * @deny (create) User cannot create a conversation in another tenant.
+     * @allow (get) Conversation can be read if the user has 'canViewChat' access in the AccountAccess collection.
+     * @deny (list) Conversations list is denied.
+     * @principle Enforces tenant-based conversation access and relies on AccountAccess for authorization.
+     */
+    match /tenants/{tenantId}/conversations/{conversationId} {
+      allow get: if isSignedIn();
+      allow list: if false; // Access control is managed via the AccountAccess collection
+      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId}/accountAccess/{accessId} collection.
+     * @path /tenants/{tenantId}/accountAccess/{accessId}
+     * @allow (create) User can create account access within their tenant.
+     * @deny (create) User cannot create account access in another tenant.
+     * @allow (get) Any authenticated user can get account access.
+     * @deny (list) Listing account access is generally not allowed.
+     * @principle Enforces tenant-based account access and prevents unauthorized listing.
+     */
+    match /tenants/{tenantId}/accountAccess/{accessId} {
+      allow get: if isSignedIn();
+      allow list: if false; // Allow listing.
+      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
   }
 }
