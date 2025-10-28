@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -34,6 +35,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const mockInvoices: Invoice[] = [
   { id: 'INV-001', customer: 'Acme Inc.', amount: 2500, amountPaid: 2500, status: 'Paid', issueDate: '2023-10-15', dueDate: '2023-11-15' },
@@ -106,6 +109,59 @@ export default function InvoicesPage() {
     setSelectedInvoice(null);
   };
 
+  const generatePdf = (invoice: Invoice) => {
+    const tempElement = document.createElement('div');
+    tempElement.className = "p-8 bg-white text-black absolute -z-10 -left-[9999px]";
+    // A simplified invoice structure for demonstration. In a real app, this would be a more detailed component.
+    tempElement.innerHTML = `
+      <div class="w-[210mm] h-[297mm] p-8 box-border flex flex-col">
+        <header class="flex justify-between items-start pb-4 border-b">
+            <div>
+                <img src="https://picsum.photos/seed/logo/150/50" alt="Company Logo" class="h-16" />
+                <h1 class="text-2xl font-bold mt-2">Whizly AI Solutions</h1>
+                <p class="text-xs">123 Whizly Avenue, Tech City, Karnataka, 560001</p>
+            </div>
+            <div class="text-right">
+                <h2 class="text-4xl font-bold uppercase">Invoice</h2>
+                <p class="mt-1"><strong>Invoice #:</strong> ${invoice.id}</p>
+                <p><strong>Date:</strong> ${invoice.issueDate}</p>
+            </div>
+        </header>
+        <section class="flex justify-between mt-8">
+             <div>
+                <h3 class="font-bold">Bill To:</h3>
+                <p>${invoice.customer}</p>
+            </div>
+        </section>
+         <section class="mt-8">
+            <p>Details for invoice items would go here...</p>
+         </section>
+        <section class="flex justify-end mt-auto">
+            <div class="w-1/2 space-y-2">
+                 <div class="flex justify-between font-bold text-xl border-t pt-2 mt-2"><span >Grand Total:</span> ₹${invoice.amount.toFixed(2)}</div>
+                 <div class="flex justify-between text-green-600"><span >Amount Paid:</span> - ₹${invoice.amountPaid.toFixed(2)}</div>
+                 <div class="flex justify-between font-bold text-xl border-t pt-2 mt-2"><span >Balance Due:</span> ₹${(invoice.amount - invoice.amountPaid).toFixed(2)}</div>
+            </div>
+        </section>
+         <footer class="mt-auto text-center text-xs text-muted-foreground pt-8">
+            <p>Thank you for your business!</p>
+        </footer>
+      </div>
+    `;
+    document.body.appendChild(tempElement);
+
+    html2canvas(tempElement, { scale: 2 }).then(canvas => {
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`invoice-${invoice.id}.pdf`);
+        document.body.removeChild(tempElement);
+         toast({ title: 'PDF Generated', description: 'Your invoice has been downloaded.' });
+    });
+  };
+
   return (
     <>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
@@ -173,7 +229,7 @@ export default function InvoicesPage() {
                           <DropdownMenuItem onClick={() => openPaymentDialog(invoice)}>
                             Record Payment
                           </DropdownMenuItem>
-                          <DropdownMenuItem>Download PDF</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => generatePdf(invoice)}>Download PDF</DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

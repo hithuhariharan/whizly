@@ -1,7 +1,7 @@
 
 'use client';
 
-import { DollarSign, IndianRupee, Users, FileWarning, Calendar as CalendarIcon, Download } from 'lucide-react';
+import { DollarSign, IndianRupee, Users, FileWarning, Download } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -21,10 +21,10 @@ import { Badge } from '@/components/ui/badge';
 import type { Invoice } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { DatePickerWithRange } from '@/components/ui/date-picker-with-range';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { useState } from 'react';
 import { DateRange } from 'react-day-picker';
-import { addDays, format } from 'date-fns';
+import { addDays } from 'date-fns';
 
 
 type Sale = Invoice & { soldBy: string; soldByAvatar: string };
@@ -52,9 +52,11 @@ export default function AccountsPage() {
     });
 
     const filteredSales = mockSales.filter(sale => {
-        if (!date?.from || !date?.to) return true;
+        if (!date?.from) return true; // Show all if no start date
         const issueDate = new Date(sale.issueDate);
-        return issueDate >= date.from && issueDate <= date.to;
+        // If there's no 'to' date, filter from 'from' date to now
+        const toDate = date.to ? date.to : new Date();
+        return issueDate >= date.from && issueDate <= toDate;
     });
 
     const totalRevenue = filteredSales.filter(s => s.status === 'Paid' || s.status === 'Partially Paid').reduce((acc, sale) => acc + sale.amountPaid, 0);
@@ -82,7 +84,7 @@ export default function AccountsPage() {
       <div className="flex items-center">
         <h1 className="font-semibold text-lg md:text-2xl">Accounting Dashboard</h1>
         <div className="ml-auto flex items-center gap-2">
-            <DatePickerWithRange date={date} setDate={setDate} />
+            <DateRangePicker onDateChange={setDate} />
             <Button onClick={exportToCSV} variant="outline">
                 <Download className="mr-2 h-4 w-4" />
                 Export to CSV
@@ -101,7 +103,7 @@ export default function AccountsPage() {
           <CardContent>
             <div className="text-2xl font-bold">₹{totalRevenue.toLocaleString('en-IN')}</div>
             <p className="text-xs text-muted-foreground">
-              Based on all paid invoices
+              Based on filtered invoices
             </p>
           </CardContent>
         </Card>
