@@ -14,11 +14,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { WhizlyLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
-import { useAuth, useUser, doc, setDocumentNonBlocking, useFirestore } from '@/firebase';
+import { useAuth, useUser, useFirestore } from '@/firebase';
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getDoc, writeBatch, collection } from 'firebase/firestore';
+import { getDoc, writeBatch, collection, doc } from 'firebase/firestore';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,7 +52,7 @@ export default function LoginPage() {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      const userDocRef = doc(firestore, "users", user.uid);
+      const userDocRef = doc(firestore, "userProfiles", user.uid);
       
       const docSnap = await getDoc(userDocRef);
       if (!docSnap.exists()) {
@@ -70,8 +70,8 @@ export default function LoginPage() {
             id: user.uid,
             email: user.email,
             role: "Admin",
-            name: user.displayName,
-            tenantId: tenantRef.id,
+            displayName: user.displayName,
+            tenantIds: [tenantRef.id],
         });
 
         await batch.commit();
@@ -147,5 +147,3 @@ export default function LoginPage() {
     </Card>
   );
 }
-
-    

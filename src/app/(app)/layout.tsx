@@ -83,7 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const userDocRef = useMemoFirebase(() => {
     if (!user || isUserLoading || !firestore) return null;
-    return doc(firestore, 'users', user.uid);
+    return doc(firestore, 'userProfiles', user.uid);
   }, [firestore, user, isUserLoading]);
 
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<{role: string}>(userDocRef);

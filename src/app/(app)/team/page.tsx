@@ -29,10 +29,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 type UserProfile = {
   id: string;
-  name: string;
+  displayName: string;
   email: string;
   role: 'Admin' | 'Manager' | 'Employee';
-  tenantId: string;
+  tenantIds: string[];
 };
 
 export default function TeamPage() {
@@ -44,14 +44,14 @@ export default function TeamPage() {
 
   const userDocRef = useMemoFirebase(() => {
     if (!user) return null;
-    return doc(firestore, 'users', user.uid);
+    return doc(firestore, 'userProfiles', user.uid);
   }, [firestore, user]);
   const { data: currentUserProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
 
   const usersCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !currentUserProfile?.tenantId) return null;
-    return query(collection(firestore, 'users'), where('tenantId', '==', currentUserProfile.tenantId));
-  }, [firestore, currentUserProfile?.tenantId]);
+    if (!firestore || !currentUserProfile?.tenantIds?.[0]) return null;
+    return query(collection(firestore, 'userProfiles'), where('tenantIds', 'array-contains', currentUserProfile.tenantIds[0]));
+  }, [firestore, currentUserProfile?.tenantIds]);
 
   const { data: users, isLoading: areUsersLoading } = useCollection<UserProfile>(usersCollectionRef);
 
@@ -81,7 +81,7 @@ export default function TeamPage() {
       });
       return;
     }
-    const userToUpdateRef = doc(firestore, 'users', userId);
+    const userToUpdateRef = doc(firestore, 'userProfiles', userId);
     updateDocumentNonBlocking(userToUpdateRef, { role: newRole });
     toast({
       title: 'Role Updated',
@@ -170,7 +170,7 @@ export default function TeamPage() {
             <TableBody>
               {users?.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.name || 'No Name'}</TableCell>
+                  <TableCell className="font-medium">{u.displayName || 'No Name'}</TableCell>
                   <TableCell>{u.email}</TableCell>
                   <TableCell>{u.role}</TableCell>
                   <TableCell className="text-right">

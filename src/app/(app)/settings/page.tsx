@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useUser, useFirestore, useDoc, useMemoFirebase, setDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const profileFormSchema = z.object({
-  name: z.string().min(2, {
+  displayName: z.string().min(2, {
     message: "Name must be at least 2 characters.",
   }),
   email: z.string().email(),
@@ -51,12 +51,13 @@ type CompanyProfileFormValues = z.infer<typeof companyProfileSchema>;
 export default function SettingsPage() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const firestore = useFirestore();
   const { toast } = useToast();
   
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-        name: user?.displayName || '',
+        displayName: user?.displayName || '',
         email: user?.email || ''
     }
   });
@@ -68,7 +69,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if(user) {
         profileForm.reset({
-            name: user.displayName || '',
+            displayName: user.displayName || '',
             email: user.email || '',
         })
     }
@@ -79,10 +80,10 @@ export default function SettingsPage() {
     if (!auth.currentUser) return;
     
     try {
-        await updateProfile(auth.currentUser, { displayName: data.name });
-        // Assuming user profile data is stored in a 'users' collection
-        const userDocRef = doc(useFirestore(), 'users', auth.currentUser.uid);
-        setDocumentNonBlocking(userDocRef, { name: data.name }, { merge: true });
+        await updateProfile(auth.currentUser, { displayName: data.displayName });
+        // Assuming user profile data is stored in a 'userProfiles' collection
+        const userDocRef = doc(firestore, 'userProfiles', auth.currentUser.uid);
+        updateDocumentNonBlocking(userDocRef, { displayName: data.displayName });
         toast({
           title: "Profile Updated",
           description: "Your settings have been saved.",
@@ -140,7 +141,7 @@ export default function SettingsPage() {
                   <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-8">
                     <FormField
                       control={profileForm.control}
-                      name="name"
+                      name="displayName"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Full Name</FormLabel>
