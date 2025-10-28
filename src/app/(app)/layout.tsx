@@ -13,6 +13,7 @@ import {
   Send,
   Settings,
   Users,
+  Volume2,
 } from 'lucide-react';
 import { WhizlyLogo } from '@/components/icons';
 import {
@@ -57,6 +58,7 @@ const navItems = [
       { href: '/integrations', icon: Plug, label: 'Integrations' },
       { href: '/chatbot', icon: Bot, label: 'Chatbot Agent' },
       { href: '/broadcasts', icon: Send, label: 'Broadcasts' },
+      { href: '/campaigns', icon: Volume2, label: 'Campaigns' },
     ],
   },
 ];
