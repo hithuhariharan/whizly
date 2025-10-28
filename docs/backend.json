@@ -4,7 +4,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Tenant",
       "type": "object",
-      "description": "Represents a tenant within the Whizly AI application. A tenant isolates data for different users or organizations.",
+      "description": "Represents a tenant in the Whizly AI application, isolating user data.",
       "properties": {
         "id": {
           "type": "string",
@@ -12,15 +12,15 @@
         },
         "name": {
           "type": "string",
-          "description": "The name of the tenant."
+          "description": "Name of the tenant."
         },
         "ownerId": {
           "type": "string",
-          "description": "Reference to User who owns the tenant. (Relationship: User 1:N Tenant)"
+          "description": "Reference to UserProfile who owns the tenant. (Relationship: UserProfile 1:N Tenant)"
         },
         "createdAt": {
           "type": "string",
-          "description": "Timestamp indicating when the tenant was created.",
+          "description": "Date and time when the tenant was created.",
           "format": "date-time"
         }
       },
@@ -31,36 +31,42 @@
         "createdAt"
       ]
     },
-    "User": {
+    "UserProfile": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "User",
+      "title": "UserProfile",
       "type": "object",
-      "description": "Represents a user of the Whizly AI application.",
+      "description": "Represents a user profile in the Whizly AI application.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the User entity."
+          "description": "Unique identifier for the UserProfile entity."
         },
         "email": {
           "type": "string",
-          "description": "The user's email address.",
+          "description": "Email address of the user.",
           "format": "email"
         },
-        "tenantId": {
+        "displayName": {
           "type": "string",
-          "description": "The ID of the tenant this user belongs to."
+          "description": "Display name of the user."
         },
-        "role": {
+        "photoURL": {
           "type": "string",
-          "description": "The user's role within the application.",
-          "enum": ["Admin", "Manager", "Employee"]
+          "description": "URL of the user's profile photo, if available.",
+          "format": "uri"
+        },
+        "tenantIds": {
+          "type": "array",
+          "description": "References to Tenants that the user belongs to. (Relationship: UserProfile N:N Tenant)",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [
         "id",
         "email",
-        "role",
-        "tenantId"
+        "displayName"
       ]
     },
     "Lead": {
@@ -75,68 +81,53 @@
         },
         "tenantId": {
           "type": "string",
-          "description": "Reference to Tenant this lead belongs to. (Relationship: Tenant 1:N Lead)"
+          "description": "Reference to Tenant. (Relationship: Tenant 1:N Lead)"
         },
         "name": {
           "type": "string",
-          "description": "The name of the lead."
+          "description": "Name of the lead."
         },
-        "contactInfo": {
+        "email": {
           "type": "string",
-          "description": "Contact information for the lead."
+          "description": "Email address of the lead.",
+          "format": "email"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone number of the lead."
         },
         "status": {
           "type": "string",
-          "description": "The current status of the lead (e.g., new, contacted, qualified)."
+          "description": "Status of the lead (e.g., New, Contacted, Qualified)."
         },
-        "assignedTo": {
+        "assignedAgentId": {
           "type": "string",
-          "description": "Reference to User assigned to this lead. (Relationship: User 1:N Lead)"
+          "description": "Reference to ChatbotAgent assigned to the lead. (Relationship: ChatbotAgent 1:N Lead)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Date and time when the lead was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date and time when the lead was last updated.",
+          "format": "date-time"
         }
       },
       "required": [
         "id",
         "tenantId",
         "name",
-        "contactInfo",
-        "status"
-      ]
-    },
-    "WhatsAppIntegration": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "WhatsAppIntegration",
-      "type": "object",
-      "description": "Represents a WhatsApp integration configuration for a tenant.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the WhatsAppIntegration entity."
-        },
-        "tenantId": {
-          "type": "string",
-          "description": "Reference to Tenant this integration belongs to. (Relationship: Tenant 1:N WhatsAppIntegration)"
-        },
-        "apiKey": {
-          "type": "string",
-          "description": "The API key for the WhatsApp integration."
-        },
-        "phoneNumber": {
-          "type": "string",
-          "description": "The phone number associated with the WhatsApp integration."
-        }
-      },
-      "required": [
-        "id",
-        "tenantId",
-        "apiKey",
-        "phoneNumber"
+        "status",
+        "createdAt"
       ]
     },
     "ChatbotAgent": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "ChatbotAgent",
       "type": "object",
-      "description": "Represents a chatbot agent trained to handle conversations.",
+      "description": "Represents a chatbot agent that can be trained and used to handle conversations.",
       "properties": {
         "id": {
           "type": "string",
@@ -144,22 +135,40 @@
         },
         "tenantId": {
           "type": "string",
-          "description": "Reference to Tenant this agent belongs to. (Relationship: Tenant 1:N ChatbotAgent)"
+          "description": "Reference to Tenant. (Relationship: Tenant 1:N ChatbotAgent)"
         },
         "name": {
           "type": "string",
-          "description": "The name of the chatbot agent."
+          "description": "Name of the chatbot agent."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the chatbot agent."
         },
         "trainingData": {
           "type": "string",
-          "description": "The data used to train the chatbot agent; could be a reference to a file or stored text."
+          "description": "The current training data provided for the agent."
+        },
+        "modelName": {
+          "type": "string",
+          "description": "Reference to trained model used for the agent."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Date and time when the agent was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date and time when the agent was last updated.",
+          "format": "date-time"
         }
       },
       "required": [
         "id",
         "tenantId",
         "name",
-        "trainingData"
+        "createdAt"
       ]
     },
     "Conversation": {
@@ -172,128 +181,115 @@
           "type": "string",
           "description": "Unique identifier for the Conversation entity."
         },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to Tenant. (Relationship: Tenant 1:N Conversation)"
+        },
         "leadId": {
           "type": "string",
-          "description": "Reference to the lead associated with this conversation. (Relationship: Lead 1:N Conversation)"
+          "description": "Reference to Lead associated with the conversation. (Relationship: Lead 1:N Conversation)"
         },
         "agentId": {
           "type": "string",
-          "description": "Reference to the ChatbotAgent handling the conversation. (Relationship: ChatbotAgent 1:N Conversation)"
+          "description": "Reference to ChatbotAgent handling the conversation. (Relationship: ChatbotAgent 1:N Conversation)"
         },
         "messages": {
           "type": "array",
-          "description": "An array of message objects within the conversation.",
+          "description": "Array of messages in the conversation.",
           "items": {
             "type": "string"
           }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Date and time when the conversation was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date and time when the conversation was last updated.",
+          "format": "date-time"
         }
       },
       "required": [
         "id",
+        "tenantId",
         "leadId",
         "agentId",
-        "messages"
+        "createdAt"
       ]
     },
-    "RazorpayIntegration": {
+    "WhatsAppIntegration": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "RazorpayIntegration",
+      "title": "WhatsAppIntegration",
       "type": "object",
-      "description": "Represents a Razorpay integration configuration for a tenant.",
+      "description": "Represents the integration with the WhatsApp API.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the RazorpayIntegration entity."
+          "description": "Unique identifier for the WhatsAppIntegration entity."
         },
         "tenantId": {
           "type": "string",
-          "description": "Reference to Tenant this integration belongs to. (Relationship: Tenant 1:N RazorpayIntegration)"
+          "description": "Reference to Tenant. (Relationship: Tenant 1:N WhatsAppIntegration)"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The phone number associated with the WhatsApp integration."
         },
         "apiKey": {
           "type": "string",
-          "description": "The API key for the Razorpay integration."
+          "description": "The API key used to connect to the WhatsApp API."
         },
-        "apiSecret": {
+        "status": {
           "type": "string",
-          "description": "The API secret for the Razorpay integration."
+          "description": "The status of the WhatsApp integration (e.g., connected, disconnected)."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Date and time when the integration was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date and time when the integration was last updated.",
+          "format": "date-time"
         }
       },
       "required": [
         "id",
         "tenantId",
+        "phoneNumber",
         "apiKey",
-        "apiSecret"
-      ]
-    },
-    "MetaPixelIntegration": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "MetaPixelIntegration",
-      "type": "object",
-      "description": "Represents a Meta Pixel integration configuration for a tenant.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the MetaPixelIntegration entity."
-        },
-        "tenantId": {
-          "type": "string",
-          "description": "Reference to Tenant this integration belongs to. (Relationship: Tenant 1:N MetaPixelIntegration)"
-        },
-        "pixelId": {
-          "type": "string",
-          "description": "The Pixel ID for the Meta Pixel integration."
-        }
-      },
-      "required": [
-        "id",
-        "tenantId",
-        "pixelId"
-      ]
-    },
-    "AccountAccess": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "AccountAccess",
-      "type": "object",
-      "description": "Represents the access control for leads based on user roles.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the AccountAccess entity."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to the user this access is granted to. (Relationship: User 1:N AccountAccess)"
-        },
-        "leadId": {
-          "type": "string",
-          "description": "Reference to the lead this access pertains to. (Relationship: Lead 1:N AccountAccess)"
-        },
-        "canViewChat": {
-          "type": "boolean",
-          "description": "Indicates whether the user can view the chat associated with the lead."
-        },
-        "canEditLead": {
-          "type": "boolean",
-          "description": "Indicates whether the user can edit lead information."
-        }
-      },
-      "required": [
-        "id",
-        "userId",
-        "leadId",
-        "canViewChat",
-        "canEditLead"
+        "status",
+        "createdAt"
       ]
     }
   },
   "auth": {
     "providers": [
       "password",
-      "google.com"
+      "anonymous"
     ]
   },
   "firestore": {
     "structure": [
+      {
+        "path": "/userProfiles/{userProfileId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile data. The document ID is the Firebase Auth UID.",
+          "params": [
+            {
+              "name": "userProfileId",
+              "description": "The Firebase Auth UID of the user."
+            }
+          ]
+        }
+      },
       {
         "path": "/tenants/{tenantId}",
         "definition": {
@@ -301,27 +297,11 @@
           "schema": {
             "$ref": "#/backend/entities/Tenant"
           },
-          "description": "Stores tenant-specific data. Each tenant isolates data for different users or organizations.",
+          "description": "Stores tenant information. Each tenant is isolated from others.",
           "params": [
             {
               "name": "tenantId",
-              "description": "The unique identifier for the tenant."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Stores user profiles. `tenantId` indicates which organization the user belongs to, enabling role-based access and data segregation.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier for the user."
+              "description": "The unique ID of the tenant."
             }
           ]
         }
@@ -333,35 +313,35 @@
           "schema": {
             "$ref": "#/backend/entities/Lead"
           },
-          "description": "Stores lead data, which is nested under a tenant to ensure data isolation.",
+          "description": "Stores lead data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
           "params": [
             {
               "name": "tenantId",
-              "description": "The unique identifier for the tenant."
+              "description": "The unique ID of the tenant."
             },
             {
               "name": "leadId",
-              "description": "The unique identifier for the lead."
+              "description": "The unique ID of the lead."
             }
           ]
         }
       },
       {
-        "path": "/tenants/{tenantId}/chatbotAgents/{agentId}",
+        "path": "/tenants/{tenantId}/chatbotAgents/{chatbotAgentId}",
         "definition": {
           "entityName": "ChatbotAgent",
           "schema": {
             "$ref": "#/backend/entities/ChatbotAgent"
           },
-          "description": "Stores ChatbotAgent data, segregated by tenant.",
+          "description": "Stores chatbot agent data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
           "params": [
             {
               "name": "tenantId",
-              "description": "The unique identifier for the tenant."
+              "description": "The unique ID of the tenant."
             },
             {
-              "name": "agentId",
-              "description": "The unique identifier for the chatbot agent."
+              "name": "chatbotAgentId",
+              "description": "The unique ID of the chatbot agent."
             }
           ]
         }
@@ -373,21 +353,40 @@
           "schema": {
             "$ref": "#/backend/entities/Conversation"
           },
-          "description": "Stores conversation data, segregated by tenant.",
+          "description": "Stores conversation data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
           "params": [
             {
               "name": "tenantId",
-              "description": "The unique identifier for the tenant."
+              "description": "The unique ID of the tenant."
             },
             {
               "name": "conversationId",
-              "description": "The unique identifier for the conversation."
+              "description": "The unique ID of the conversation."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tenants/{tenantId}/whatsAppIntegrations/{whatsAppIntegrationId}",
+        "definition": {
+          "entityName": "WhatsAppIntegration",
+          "schema": {
+            "$ref": "#/backend/entities/WhatsAppIntegration"
+          },
+          "description": "Stores WhatsApp integration data for a specific tenant. Includes denormalized 'tenantId' for authorization independence.",
+          "params": [
+            {
+              "name": "tenantId",
+              "description": "The unique ID of the tenant."
+            },
+            {
+              "name": "whatsAppIntegrationId",
+              "description": "The unique ID of the WhatsApp integration."
             }
           ]
         }
       }
     ],
-    "reasoning": "This Firestore structure is built around a multi-tenant model to ensure data isolation between different organizations.\n\n*   **/tenants/{tenantId}**: This is the root for all tenant-specific information.\n*   **/users/{userId}**: This is a top-level collection for authentication purposes. Crucially, each user document contains a `tenantId` field, which is the cornerstone of our security rules. This allows us to quickly identify which tenant a user belongs to.\n*   **/tenants/{tenantId}/{collection}/{docId}**: All other business-critical data (leads, agents, conversations, etc.) is stored in subcollections under its respective tenant. This structure makes it impossible for a query to accidentally leak data from another tenant.\n\n**Security Rules Strategy:**\n\nThe rules are designed to enforce tenant boundaries strictly:\n1.  **User Access**: A user can only read their own user document or the documents of other users who share the same `tenantId`.\n2.  **Admin Privileges**: An 'Admin' role allows a user to update or delete other users within the *same tenant*.\n3.  **Subcollection Access**: All access to data within `/tenants/{tenantId}` subcollections is gated by checking if the requesting user's `tenantId` matches the `{tenantId}` in the path."
+    "reasoning": "The Firestore structure is designed to ensure data isolation between tenants and enforce strict access control. Each tenant has its own dedicated space, and users can only access data within their assigned tenants. Authorization Independence is achieved by denormalizing tenantId into every document that belongs to a tenant. This eliminates the need for `get()` calls in security rules to verify tenant ownership.  Structural Segregation is implemented by storing different entities (Leads, ChatbotAgents, Conversations, WhatsAppIntegrations) in separate collections under each tenant. This allows for specific security rules tailored to each entity type. The structure is designed to support the required QAPs by enforcing tenant-based access control and preventing unauthorized data access."
   }
 }
-    

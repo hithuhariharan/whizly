@@ -1,186 +1,168 @@
 /**
- * @file Firestore Security Rules
- * @description This ruleset enforces a multi-tenant security model where data access is strictly controlled within each tenant.
+ * @file Firestore Security Rules for Whizly AI application.
  *
- * Data Structure:
- * - /tenants/{tenantId}: Root collection for tenants.
- * - /users/{userId}: Root collection for users. User documents store tenant membership.
- * - /tenants/{tenantId}/leads/{leadId}: Leads belonging to a specific tenant.
- * - /tenants/{tenantId}/chatbotAgents/{agentId}: Chatbot agents for each tenant.
- * - /tenants/{tenantId}/conversations/{conversationId}: Conversations related to leads within a tenant.
- * - /tenants/{tenantId}/accountAccess/{accessId}: Explicit access control list for lead access.
+ * @corePhilosophy This ruleset enforces a strict tenant-based isolation model. Users can only
+ *                 access resources (leads, agents, conversations, integrations) within tenants
+ *                 they have explicit ownership or membership within. User profiles are
+ *                 accessible only to the authenticated user.
  *
- * Key Security Decisions:
- * - User listing is implicitly denied as there is no rule allowing listing the `/users` collection.
- * - All data is scoped to tenants, preventing cross-tenant data access.
- * - `accountAccess` collection is used to authorize access to leads and conversations.
+ * @dataStructure The database is structured with a top-level `/userProfiles/{userId}` collection
+ *                and a `/tenants/{tenantId}` collection. All tenant-related data (leads, agents,
+ *                conversations, and integrations) are stored as subcollections under a specific
+ *                tenant document. This structure ensures tenant-level data isolation.
  *
- * Denormalization for Authorization:
- * - The `accountAccess` collection denormalizes user and lead relationships to allow efficient authorization checks without needing `get()` calls.
+ * @keySecurityDecisions
+ *   - User listing is disallowed to protect user privacy.
+ *   - Tenant-level resources inherit tenant ownership for simplified authorization.
+ *   - All write operations are explicitly protected by authorization checks, with no open write rules.
  *
- * Structural Segregation:
- * - Tenant-specific data is stored in separate subcollections under each tenant, ensuring data isolation.
+ * @denormalizationForAuthorization The `tenantId` is denormalized into all tenant-owned documents
+ *                                 to enable simple, performant ownership checks without requiring
+ *                                 additional `get()` calls.
+ *
+ * @structuralSegregation Data is separated into collections based on its type (user profiles,
+ *                         tenants, leads, etc.) to allow for tailored security rules for each
+ *                         data category. Public/private segregation is achieved implicitly through
+ *                         the tenant-based structure.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Allows managing tenants, restricting access to the tenant owner.
+     * @description Controls access to user profile data.
+     * @path /userProfiles/{userProfileId}
+     * @allow (get) Authenticated user accessing their own profile. (auth.uid == userProfileId)
+     * @allow (create) Authenticated user creating their own profile. (auth.uid == userProfileId)
+     * @allow (update) Authenticated user updating their own profile. (auth.uid == userProfileId)
+     * @deny (get) Authenticated user accessing another user's profile. (auth.uid != userProfileId)
+     * @deny (create) Authenticated user creating a profile with a mismatched ID. (auth.uid != userProfileId)
+     * @deny (update) Authenticated user updating another user's profile. (auth.uid != userProfileId)
+     * @principle Enforces user-ownership for profile data.
+     */
+    match /userProfiles/{userProfileId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+      allow get: if isSignedIn() && isOwner(userProfileId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userProfileId) && request.resource.data.id == userProfileId;
+      allow update: if isSignedIn() && isOwner(userProfileId) && request.resource.data.id == resource.data.id;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Controls access to tenant data.
      * @path /tenants/{tenantId}
-     * @allow (create) User with matching {tenantId} can create a tenant document.
-     * @deny (create) User without matching {tenantId} cannot create a tenant document.
-     * @allow (get, list) Anyone can read tenant information.
-     * @allow (update, delete) Only the owner can update or delete the tenant.
-     * @deny (update, delete) Others cannot update or delete the tenant.
-     * @principle Enforces tenant ownership for writes.
+     * @allow (get) Authenticated user who is the tenant owner reading the tenant data.
+     * @allow (create) Authenticated user creating a new tenant with themselves as the owner.
+     * @allow (update) Authenticated user who is the tenant owner updating the tenant data.
+     * @deny (get) Authenticated user reading tenant data they do not own.
+     * @deny (create) Authenticated user creating a tenant with an owner other than themselves.
+     * @deny (update) Authenticated user updating tenant data they do not own.
+     * @principle Enforces tenant ownership.
      */
     match /tenants/{tenantId} {
-      // Read permissions: Public read
-      allow get, list: if true;
-
-      // Write permissions: Owner-only writes
-
-      // Self-Creation: Allow create if the authenticated user's UID matches the tenant's ownerId
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-
-      // Owner-Only Access: Update and delete are restricted to the tenant owner.
-      allow update, delete: if isSignedIn() && get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      function isOwner(ownerId) {
+        return request.auth.uid == ownerId;
+      }
+      allow get: if isSignedIn() && isOwner(resource.data.ownerId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(request.resource.data.ownerId) && request.resource.data.id == tenantId;
+      allow update: if isSignedIn() && isOwner(resource.data.ownerId) && request.resource.data.id == resource.data.id;
+      allow delete: if false;
     }
 
     /**
-     * @description Allows managing user profiles, restricting write access to the user themselves.
-     * @path /users/{userId}
-     * @allow (create) User can create their own profile.
-     * @deny (create) User cannot create another user's profile.
-     * @allow (get) Anyone can read user information.
-     * @deny (list) Listing of users is not allowed.
-     * @allow (update, delete) User can update or delete their own profile.
-     * @deny (update, delete) User cannot update or delete another user's profile.
-     * @principle Enforces user ownership for writes.
-     */
-    match /users/{userId} {
-      // Read permissions: Public read for get, no list
-      allow get: if true;
-      allow list: if false; // Listing users is not permitted.
-
-      // Write permissions: Owner-only writes
-
-      // Self-Creation: Allow create if the authenticated user's UID matches the document ID.
-      allow create: if isSignedIn() && request.auth.uid == userId;
-
-      // Owner-Only Access: Update and delete are restricted to the user themselves.
-      allow update, delete: if isSignedIn() && request.auth.uid == userId;
-    }
-
-    /**
-     * @description Allows managing leads within a tenant, restricting access based on account access controls.
+     * @description Controls access to lead data within a tenant.
      * @path /tenants/{tenantId}/leads/{leadId}
-     * @allow (create) Anyone can create a lead within a tenant. Requires tenantId match.
-     * @deny (create) Creating leads in the wrong tenant is denied.
-     * @allow (get) Anyone can read lead information if they have access.
-     * @allow (list) Anyone can list leads if they have access.
-     * @allow (update, delete) Only users with `canEditLead` can update or delete a lead.
-     * @deny (update, delete) Users without `canEditLead` cannot update or delete a lead.
-     * @principle Enforces access control through the AccountAccess collection.
+     * @allow (get) Authenticated user reading lead data within a tenant they own.
+     * @allow (create) Authenticated user creating lead data within a tenant they own.
+     * @allow (update) Authenticated user updating lead data within a tenant they own.
+     * @deny (get) Authenticated user reading lead data within a tenant they do not own.
+     * @deny (create) Authenticated user creating lead data within a tenant they do not own.
+     * @deny (update) Authenticated user updating lead data within a tenant they do not own.
+     * @principle Enforces tenant-based data isolation.
      */
     match /tenants/{tenantId}/leads/{leadId} {
-      // Read permissions: Check AccountAccess
-      allow get: if isSignedIn() && hasLeadAccess(tenantId, leadId, request.auth.uid, 'canViewChat');
-      allow list: if isSignedIn() && hasLeadAccess(tenantId, leadId, request.auth.uid, 'canViewChat');
-
-      // Write permissions: Check AccountAccess for edit permission
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update, delete: if isSignedIn() && hasLeadAccess(tenantId, leadId, request.auth.uid, 'canEditLead');
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn() && isTenantOwner(tenantId) && resource.data.tenantId == tenantId;
+      allow delete: if false;
     }
 
     /**
-     * @description Allows managing chatbot agents within a tenant.
-     * @path /tenants/{tenantId}/chatbotAgents/{agentId}
-     * @allow (create) Anyone can create an agent within a tenant.
-     * @deny (create) Creating agents in the wrong tenant is denied.
-     * @allow (get, list) Anyone can read chatbot agent information.
-     * @allow (update, delete) Only the owner can update or delete the agent.
-     * @deny (update, delete) Others cannot update or delete the agent.
+     * @description Controls access to chatbot agent data within a tenant.
+     * @path /tenants/{tenantId}/chatbotAgents/{chatbotAgentId}
+     * @allow (get) Authenticated user reading chatbot agent data within a tenant they own.
+     * @allow (create) Authenticated user creating chatbot agent data within a tenant they own.
+     * @allow (update) Authenticated user updating chatbot agent data within a tenant they own.
+     * @deny (get) Authenticated user reading chatbot agent data within a tenant they do not own.
+     * @deny (create) Authenticated user creating chatbot agent data within a tenant they do not own.
+     * @deny (update) Authenticated user updating chatbot agent data within a tenant they do not own.
+     * @principle Enforces tenant-based data isolation.
      */
-    match /tenants/{tenantId}/chatbotAgents/{agentId} {
-      // Read permissions: Public read
-      allow get, list: if true;
-
-      // Write permissions: Only users in the tenant can write.
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update, delete: if isSignedIn() && isTenantMember(tenantId);
+    match /tenants/{tenantId}/chatbotAgents/{chatbotAgentId} {
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn() && isTenantOwner(tenantId) && resource.data.tenantId == tenantId;
+      allow delete: if false;
     }
 
     /**
-     * @description Allows managing conversations within a tenant, restricting access based on lead access controls.
+     * @description Controls access to conversation data within a tenant.
      * @path /tenants/{tenantId}/conversations/{conversationId}
-     * @allow (create) Anyone can create a conversation within a tenant if they have access to the lead.
-     * @deny (create) Creating conversations in the wrong tenant is denied.
-     * @allow (get) Anyone can read conversation information if they have access to the lead.
-     * @allow (list) Anyone can list conversations if they have access to the associated lead.
-     * @allow (update, delete) Only users with `canEditLead` can update or delete a conversation.
-     * @deny (update, delete) Users without `canEditLead` cannot update or delete a conversation.
+     * @allow (get) Authenticated user reading conversation data within a tenant they own.
+     * @allow (create) Authenticated user creating conversation data within a tenant they own.
+     * @allow (update) Authenticated user updating conversation data within a tenant they own.
+     * @deny (get) Authenticated user reading conversation data within a tenant they do not own.
+     * @deny (create) Authenticated user creating conversation data within a tenant they do not own.
+     * @deny (update) Authenticated user updating conversation data within a tenant they do not own.
+     * @principle Enforces tenant-based data isolation.
      */
     match /tenants/{tenantId}/conversations/{conversationId} {
-      // Read permissions: Check AccountAccess for the associated lead.
-      allow get: if isSignedIn() && get(/databases/$(database)/documents/tenants/$(tenantId)/conversations/$(conversationId)).data.leadId != null && hasLeadAccess(tenantId, get(/databases/$(database)/documents/tenants/$(tenantId)/conversations/$(conversationId)).data.leadId, request.auth.uid, 'canViewChat');
-      allow list: if isSignedIn() && get(/databases/$(database)/documents/tenants/$(tenantId)/conversations/$(conversationId)).data.leadId != null && hasLeadAccess(tenantId, get(/databases/$(database)/documents/tenants/$(tenantId)/conversations/$(conversationId)).data.leadId, request.auth.uid, 'canViewChat');
-
-      // Write permissions: Check AccountAccess for the associated lead for edit permission.
-      allow create: if isSignedIn() && request.resource.data.leadId != null && isLeadInTenant(tenantId, request.resource.data.leadId);
-      allow update, delete: if isSignedIn() && get(/databases/$(database)/documents/tenants/$(tenantId)/conversations/$(conversationId)).data.leadId != null && hasLeadAccess(tenantId, get(/databases/$(database)/documents/tenants/$(tenantId)/conversations/$(conversationId)).data.leadId, request.auth.uid, 'canEditLead');
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn() && isTenantOwner(tenantId) && resource.data.tenantId == tenantId;
+      allow delete: if false;
     }
 
     /**
-     * @description Allows managing account access controls within a tenant.
-     * @path /tenants/{tenantId}/accountAccess/{accessId}
-     * @allow (create) Anyone can create an account access entry within a tenant.
-     * @deny (create) Creating account access entries in the wrong tenant is denied.
-     * @allow (get, list) Anyone can read account access information.
-     * @allow (update, delete) Only the tenant owner can update or delete account access entries.
-     * @deny (update, delete) Others cannot update or delete account access entries.
+     * @description Controls access to WhatsApp integration data within a tenant.
+     * @path /tenants/{tenantId}/whatsAppIntegrations/{whatsAppIntegrationId}
+     * @allow (get) Authenticated user reading WhatsApp integration data within a tenant they own.
+     * @allow (create) Authenticated user creating WhatsApp integration data within a tenant they own.
+     * @allow (update) Authenticated user updating WhatsApp integration data within a tenant they own.
+     * @deny (get) Authenticated user reading WhatsApp integration data within a tenant they do not own.
+     * @deny (create) Authenticated user creating WhatsApp integration data within a tenant they do not own.
+     * @deny (update) Authenticated user updating WhatsApp integration data within a tenant they do not own.
+     * @principle Enforces tenant-based data isolation.
      */
-    match /tenants/{tenantId}/accountAccess/{accessId} {
-      // Read permissions: Public read.
-      allow get, list: if true;
-
-      // Write permissions: Only tenant owner can manage access.
-      allow create: if isSignedIn() && request.resource.data.tenantId == tenantId;
-      allow update, delete: if isSignedIn() && isTenantOwner(tenantId);
+    match /tenants/{tenantId}/whatsAppIntegrations/{whatsAppIntegrationId} {
+      function isTenantOwner(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+      }
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn() && isTenantOwner(tenantId) && resource.data.tenantId == tenantId;
+      allow delete: if false;
     }
-  }
 
-  // Helper functions
-
-  // Checks if the user is signed in.
-  function isSignedIn() {
-    return request.auth != null;
-  }
-
-  // Checks if the user is the owner of the tenant.
-  function isOwner(userId) {
-    return request.auth.uid == userId;
-  }
-
-  // Checks if the user is a member of the tenant.
-  function isTenantMember(tenantId) {
-    return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantIds is list && tenantId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantIds;
-  }
-
-    // Checks if the user is the owner of the tenant.
-  function isTenantOwner(tenantId) {
-    return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
-  }
-
-  // Checks if the user has access to a lead based on AccountAccess.
-  function hasLeadAccess(tenantId, leadId, userId, permission) {
-    return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(userId)_$(leadId)) &&
-           get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(userId)_$(leadId)).data[permission] == true;
-  }
-
-  // Checks if a lead exists and belongs to the specified tenant.
-  function isLeadInTenant(tenantId, leadId) {
-    return exists(/databases/$(database)/documents/tenants/$(tenantId)/leads/$(leadId));
+    function isSignedIn() {
+      return request.auth != null;
+    }
   }
 }
