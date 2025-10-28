@@ -38,7 +38,7 @@ service cloud.firestore {
     }
 
     function isExistingOwner(userId) {
-      return request.auth.uid == resource.data.ownerId;
+      return isOwner(userId) && resource.data.ownerId == userId;
     }
 
     /**
@@ -48,73 +48,12 @@ service cloud.firestore {
      * @deny (create) request.auth.uid cannot create a tenant with request.resource.data.ownerId != request.auth.uid.
      */
     match /tenants/{tenantId} {
-      allow get: if true;
+      allow get: if isSignedIn();
       allow list: if false; // Listing tenants is not permitted
 
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSignedIn() && isExistingOwner(resource.data.ownerId);
-      allow delete: if isSignedIn() && isExistingOwner(resource.data.ownerId);
-
-      match /leads/{leadId} {
-        function canViewLead(tenantId, leadId, userId) {
-            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
-                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canViewChat == true;
-        }
-
-        function canEditLead(tenantId, leadId, userId) {
-            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
-                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canEditLead == true;
-        }
-        
-        allow get: if isSignedIn() && canViewLead(tenantId, leadId, request.auth.uid);
-        allow list: if false; // Listing of leads should be controlled elsewhere
-
-        allow create: if isSignedIn();
-        allow update: if isSignedIn() && canEditLead(tenantId, leadId, request.auth.uid);
-        allow delete: if isSignedIn() && canEditLead(tenantId, leadId, request.auth.uid);
-      }
-
-      match /chatbotAgents/{agentId} {
-          function isTenantOwner(tenantId) {
-              return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
-          }
-        allow get: if isSignedIn() && isTenantOwner(tenantId);
-        allow list: if isSignedIn() && isTenantOwner(tenantId);
-
-        allow create: if isSignedIn() && isTenantOwner(tenantId);
-        allow update: if isSignedIn() && isTenantOwner(tenantId);
-        allow delete: if isSignedIn() && isTenantOwner(tenantId);
-      }
-
-      match /conversations/{conversationId} {
-          function canViewConversation(tenantId, leadId, userId) {
-              return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
-                  && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canViewChat == true;
-          }
-
-          function getLeadId() {
-            return request.resource.data.leadId;
-          }
-
-        allow get: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
-        allow list: if false; // Listing conversations is not permitted directly
-
-        allow create: if isSignedIn() ;
-        allow update: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
-        allow delete: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
-      }
-
-      match /accountAccess/{accessId} {
-         function isTenantOwner(tenantId) {
-              return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
-          }
-        allow get: if isSignedIn() && isTenantOwner(tenantId);
-        allow list: if isSignedIn() && isTenantOwner(tenantId);
-
-        allow create: if isSignedIn() && isTenantOwner(tenantId);
-        allow update: if isSignedIn() && isTenantOwner(tenantId);
-        allow delete: if isSignedIn() && isTenantOwner(tenantId);
-      }
+      allow update: if isSignedIn() && request.resource.data.ownerId == resource.before.data.ownerId && resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }
 
     /**
@@ -131,6 +70,92 @@ service cloud.firestore {
       allow create: if isOwner(userId);
       allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
+    }
+
+    /**
+     * @description Allows read and write access to lead documents within a tenant, with access controlled by AccountAccess.
+     * @path /tenants/{tenantId}/leads/{leadId}
+     * @allow (get) request.auth.uid can get the lead if they have AccountAccess.canViewChat == true.
+     * @deny (update) request.auth.uid cannot update the lead if they don't have AccountAccess.canEditLead == true.
+     * @principle Enforces account access control for leads within a tenant.
+     */
+    match /tenants/{tenantId}/leads/{leadId} {
+        function canViewLead(tenantId, leadId, userId) {
+            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
+                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canViewChat == true;
+        }
+
+        function canEditLead(tenantId, leadId, userId) {
+            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
+                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canEditLead == true;
+        }
+        
+        allow get: if isSignedIn() && canViewLead(tenantId, leadId, request.auth.uid);
+        allow list: if false; // Listing of leads should be controlled elsewhere
+
+        allow create: if isSignedIn();
+        allow update: if isSignedIn() && canEditLead(tenantId, leadId, request.auth.uid);
+        allow delete: if isSignedIn() && canEditLead(tenantId, leadId, request.auth.uid);
+    }
+
+    /**
+     * @description Allows read and write access to chatbot agent documents within a tenant, with tenant owner access.
+     * @path /tenants/{tenantId}/chatbotAgents/{agentId}
+     */
+    match /tenants/{tenantId}/chatbotAgents/{agentId} {
+        function isTenantOwner(tenantId) {
+            return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+        }
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if false;
+
+      allow create: if isSignedIn() && isTenantOwner(tenantId);
+      allow update: if isSignedIn() && isTenantOwner(tenantId);
+      allow delete: if isSignedIn() && isTenantOwner(tenantId);
+    }
+
+    /**
+     * @description Allows read and write access to conversation documents within a tenant, with access controlled by AccountAccess.
+     * @path /tenants/{tenantId}/conversations/{conversationId}
+     * @allow (get) request.auth.uid can get the conversation if they have AccountAccess.canViewChat == true for the associated lead.
+     * @deny (update) request.auth.uid cannot update the conversation if they don't have AccountAccess.canViewChat == true for the associated lead.
+     * @principle Enforces account access control for conversations within a tenant.
+     */
+    match /tenants/{tenantId}/conversations/{conversationId} {
+        function canViewConversation(tenantId, leadId, userId) {
+            return exists(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId))
+                && get(/databases/$(database)/documents/tenants/$(tenantId)/accountAccess/$(leadId)_$(userId)).data.canViewChat == true;
+        }
+
+        function getLeadId() {
+          return resource.data.leadId;
+        }
+
+      allow get: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
+      allow list: if false; // Listing conversations is not permitted directly
+
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
+      allow delete: if isSignedIn() && canViewConversation(tenantId, getLeadId(), request.auth.uid);
+    }
+
+    /**
+     * @description Allows read and write access to account access documents within a tenant, with tenant owner access.
+     * @path /tenants/{tenantId}/accountAccess/{accessId}
+     * @allow (create) request.auth.uid (tenant owner) can create an account access document.
+     * @deny (update) request.auth.uid (non-tenant owner) cannot update an account access document.
+     * @principle Enforces tenant ownership for managing account access.
+     */
+    match /tenants/{tenantId}/accountAccess/{accessId} {
+       function isTenantOwner(tenantId) {
+            return get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == request.auth.uid;
+        }
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if false;
+
+      allow create: if isSignedIn() && isTenantOwner(tenantId);
+      allow update: if isSignedIn() && isTenantOwner(tenantId);
+      allow delete: if isSignedIn() && isTenantOwner(tenantId);
     }
   }
 }
