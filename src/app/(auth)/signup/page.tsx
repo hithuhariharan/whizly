@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { WhizlyLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
 import { useAuth, useFirestore, useUser, setDocumentNonBlocking, doc } from '@/firebase';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, updateProfile, getRedirectResult } from 'firebase/auth';
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getDoc } from 'firebase/firestore';
@@ -34,37 +34,6 @@ export default function SignupPage() {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
-
-  useEffect(() => {
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-            const user = result.user;
-            const userDocRef = doc(firestore, "users", user.uid);
-            
-            // Check if the user document already exists before creating it.
-            getDoc(userDocRef).then(docSnap => {
-                 if (!docSnap.exists()) {
-                    setDocumentNonBlocking(userDocRef, {
-                        id: user.uid,
-                        email: user.email,
-                        role: "Admin", // Default role for initial signup
-                        name: user.displayName,
-                    }, { merge: true });
-                }
-            });
-        }
-      }).catch((error) => {
-        // Handle Errors here.
-        if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
-           toast({
-            variant: "destructive",
-            title: "Google Sign-In Failed",
-            description: error.message,
-          });
-        }
-      });
-  }, [auth, firestore, toast]);
   
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +48,6 @@ export default function SignupPage() {
       await updateProfile(user, { displayName: name });
 
       const userDocRef = doc(firestore, "users", user.uid);
-      // Use setDocumentNonBlocking to avoid blocking UI and handle errors gracefully
       setDocumentNonBlocking(userDocRef, {
         id: user.uid,
         email: user.email,
@@ -96,9 +64,31 @@ export default function SignupPage() {
     }
   };
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
-    signInWithRedirect(auth, provider);
+    try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const userDocRef = doc(firestore, "users", user.uid);
+        
+        const docSnap = await getDoc(userDocRef);
+        if (!docSnap.exists()) {
+            setDocumentNonBlocking(userDocRef, {
+                id: user.uid,
+                email: user.email,
+                role: "Admin", // Default role for new users via Google
+                name: user.displayName,
+            }, { merge: true });
+        }
+    } catch (error: any) {
+        if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
+           toast({
+            variant: "destructive",
+            title: "Google Sign-In Failed",
+            description: error.message,
+          });
+        }
+    }
   };
   
   if (isUserLoading || (!isUserLoading && user)) {

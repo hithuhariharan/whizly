@@ -14,14 +14,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { WhizlyLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
-import { useAuth, useUser } from '@/firebase';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { useAuth, useUser, doc, setDocumentNonBlocking, useFirestore } from '@/firebase';
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { getDoc } from 'firebase/firestore';
 
 export default function LoginPage() {
   const router = useRouter();
   const auth = useAuth();
+  const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
 
@@ -30,26 +32,6 @@ export default function LoginPage() {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
-
-  useEffect(() => {
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          // This is the signed-in user.
-          // The useUser hook will handle the redirect to dashboard.
-        }
-      }).catch((error) => {
-        // Handle Errors here.
-        if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
-           toast({
-              variant: "destructive",
-              title: "Google Sign-In Failed",
-              description: error.message,
-            });
-        }
-      });
-  }, [auth, toast]);
-
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,9 +47,31 @@ export default function LoginPage() {
       });
   };
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
-    signInWithRedirect(auth, provider);
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      const userDocRef = doc(firestore, "users", user.uid);
+      
+      const docSnap = await getDoc(userDocRef);
+      if (!docSnap.exists()) {
+        setDocumentNonBlocking(userDocRef, {
+            id: user.uid,
+            email: user.email,
+            role: "Admin",
+            name: user.displayName,
+        }, { merge: true });
+      }
+    } catch (error: any) {
+       if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
+           toast({
+              variant: "destructive",
+              title: "Google Sign-In Failed",
+              description: error.message,
+            });
+        }
+    }
   };
 
   if (isUserLoading || (!isUserLoading && user)) {
