@@ -32,3 +32,12 @@ export type Conversation = {
   summary: string;
   transcript: { speaker: string; message: string; timestamp: string }[];
 };
+
+export type Invoice = {
+  id: string;
+  customer: string;
+  amount: number;
+  status: 'Draft' | 'Pending' | 'Paid' | 'Overdue';
+  issueDate: string;
+  dueDate: string;
+};

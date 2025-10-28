@@ -16,6 +16,7 @@ import {
   Volume2,
   Library,
   Shield,
+  FileText,
 } from 'lucide-react';
 import { WhizlyLogo } from '@/components/icons';
 import {
@@ -66,6 +67,7 @@ const navItems = [
       { href: '/broadcasts', icon: Send, label: 'Broadcasts' },
       { href: '/campaigns', icon: Volume2, label: 'Campaigns' },
       { href: '/resources', icon: Library, label: 'Resource Library' },
+      { href: '/invoices', icon: FileText, label: 'Invoices' },
     ],
   },
 ];
