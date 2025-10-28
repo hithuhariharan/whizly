@@ -4,40 +4,30 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Facebook } from 'lucide-react';
+import Link from 'next/link';
 
 export default function WhatsAppIntegrationPage() {
   const { toast } = useToast();
-  const [isLoadingCreate, setIsLoadingCreate] = useState(false);
-  const [isLoadingTransfer, setIsLoadingTransfer] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  const handleCreateAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoadingCreate(true);
-    // Simulate API call
+  const handleConnect = () => {
+    setIsConnecting(true);
+    toast({
+      title: 'Redirecting to Facebook...',
+      description: 'You will be redirected to complete the connection.',
+    });
+    // In a real application, this would redirect to the Facebook OAuth URL
+    // For this prototype, we'll just simulate the loading state.
     setTimeout(() => {
-      setIsLoadingCreate(false);
+       // window.location.href = "https://www.facebook.com/v19.0/dialog/oauth?client_id=YOUR_APP_ID&redirect_uri=YOUR_REDIRECT_URI&scope=whatsapp_business_management,whatsapp_business_messaging";
       toast({
-        title: 'Account Creation Initiated',
-        description: 'We are setting up your new WhatsApp Business API account. You will be notified upon completion.',
+        title: 'Connection Simulation',
+        description: 'In a real app, you would now be at Facebook to grant permissions.',
       });
-    }, 2000);
-  };
-
-  const handleTransferAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoadingTransfer(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoadingTransfer(false);
-      toast({
-        title: 'Account Transfer Initiated',
-        description: 'Your request to transfer your existing account has been submitted. We will notify you of the status.',
-      });
-    }, 2000);
+      setIsConnecting(false);
+    }, 3000);
   };
 
   return (
@@ -46,67 +36,37 @@ export default function WhatsAppIntegrationPage() {
         <h1 className="font-semibold text-lg md:text-2xl">WhatsApp Integration</h1>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <Card className="shadow-sm">
-          <form onSubmit={handleCreateAccount}>
-            <CardHeader>
-              <CardTitle>Create New WhatsApp Business Account</CardTitle>
-              <CardDescription>
-                Set up a new WhatsApp Business API account directly through Whizly.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="create-business-name">Business Name</Label>
-                <Input id="create-business-name" placeholder="Your Company LLC" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="create-phone-number">WhatsApp Phone Number</Label>
-                <Input id="create-phone-number" type="tel" placeholder="+1 (555) 123-4567" required />
-                <p className="text-xs text-muted-foreground">
-                  This must be a number that can receive SMS or a phone call for verification.
-                </p>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" disabled={isLoadingCreate}>
-                {isLoadingCreate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Account
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-
-        <Card className="shadow-sm">
-          <form onSubmit={handleTransferAccount}>
-            <CardHeader>
-              <CardTitle>Transfer Existing WhatsApp Account</CardTitle>
-              <CardDescription>
-                Migrate your existing WhatsApp Business API account to Whizly to manage it here.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="transfer-account-id">WhatsApp Business Account ID</Label>
-                <Input id="transfer-account-id" placeholder="e.g., 123456789012345" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="transfer-api-key">API Key / Access Token</Label>
-                <Input id="transfer-api-key" type="password" required />
-                <p className="text-xs text-muted-foreground">
-                  Your existing provider's API key or access token for authentication.
-                </p>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" disabled={isLoadingTransfer}>
-                {isLoadingTransfer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Initiate Transfer
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-      </div>
+      <Card className="max-w-2xl mx-auto shadow-sm">
+        <CardHeader className="text-center">
+          <CardTitle>Connect Your WhatsApp Account</CardTitle>
+          <CardDescription className="pt-2">
+            Click the button below to connect your WhatsApp Business Account. You will be redirected to Facebook to approve the necessary permissions. This allows Whizly to manage your conversations and contacts securely.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex justify-center">
+          <Button onClick={handleConnect} disabled={isConnecting} size="lg">
+            {isConnecting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <Facebook className="mr-2 h-5 w-5" />
+                Connect with Facebook
+              </>
+            )}
+          </Button>
+        </CardContent>
+        <CardFooter className="flex-col text-center text-xs text-muted-foreground">
+          <p>
+            By connecting your account, you agree to Whizly AI&apos;s Terms of Service and Privacy Policy.
+          </p>
+          <p className="mt-2">
+             <Link href="#" className="underline">Learn more</Link> about the required permissions.
+          </p>
+        </CardFooter>
+      </Card>
     </main>
   );
 }
